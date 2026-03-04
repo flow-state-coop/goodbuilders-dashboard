@@ -1,66 +1,106 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import { request } from "graphql-request";
+import {
+  FLOW_COUNCIL_SUBGRAPH,
+  SUPERFLUID_SUBGRAPH,
+  COUNCIL_ADDRESS,
+  DISTRIBUTION_POOL,
+  SUPER_APP,
+  CHAIN_ID,
+} from "@/lib/constants";
+import {
+  ALL_BALLOTS_QUERY,
+  FLOW_UPDATED_EVENTS_QUERY,
+  DISTRIBUTION_POOL_QUERY,
+} from "@/lib/queries";
+import {
+  SubgraphBallot,
+  FlowUpdatedEvent,
+  PoolData,
+  ApplicationData,
+} from "@/types";
+import DashboardClient from "@/components/DashboardClient";
 
-export default function Home() {
+async function fetchAllBallots(): Promise<SubgraphBallot[]> {
+  const all: SubgraphBallot[] = [];
+  let skip = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    const data = await request<{ ballots: SubgraphBallot[] }>(
+      FLOW_COUNCIL_SUBGRAPH,
+      ALL_BALLOTS_QUERY,
+      { councilId: COUNCIL_ADDRESS, first: pageSize, skip },
+    );
+    all.push(...data.ballots);
+    if (data.ballots.length < pageSize) break;
+    skip += pageSize;
+  }
+
+  return all;
+}
+
+async function fetchFlowEvents(): Promise<FlowUpdatedEvent[]> {
+  const all: FlowUpdatedEvent[] = [];
+  let skip = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    const data = await request<{ flowUpdatedEvents: FlowUpdatedEvent[] }>(
+      SUPERFLUID_SUBGRAPH,
+      FLOW_UPDATED_EVENTS_QUERY,
+      { receiver: SUPER_APP, first: pageSize, skip },
+    );
+    all.push(...data.flowUpdatedEvents);
+    if (data.flowUpdatedEvents.length < pageSize) break;
+    skip += pageSize;
+  }
+
+  return all;
+}
+
+async function fetchPool(): Promise<PoolData> {
+  const data = await request<{ pool: PoolData }>(
+    SUPERFLUID_SUBGRAPH,
+    DISTRIBUTION_POOL_QUERY,
+    { poolId: DISTRIBUTION_POOL },
+  );
+  return data.pool;
+}
+
+async function fetchApplications(): Promise<ApplicationData[]> {
+  const res = await fetch(
+    "https://flowstate.network/api/flow-council/applications",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chainId: CHAIN_ID,
+        councilId: COUNCIL_ADDRESS,
+      }),
+      next: { revalidate: 300 },
+    },
+  );
+
+  const json = await res.json();
+  return json.success ? json.applications : [];
+}
+
+export const revalidate = 60;
+
+export default async function Page() {
+  const [ballots, flowEvents, pool, applications] = await Promise.all([
+    fetchAllBallots(),
+    fetchFlowEvents(),
+    fetchPool(),
+    fetchApplications(),
+  ]);
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <DashboardClient
+      ballots={ballots}
+      flowEvents={flowEvents}
+      pool={pool}
+      applications={applications}
+    />
   );
 }

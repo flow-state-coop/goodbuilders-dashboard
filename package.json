@@ -5,17 +5,34 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "prettier": "prettier --check ."
   },
   "dependencies": {
+    "@apollo/client": "^4.1.6",
+    "bootstrap": "^5.3.8",
+    "graphql": "^16.13.0",
+    "graphql-request": "^7.4.0",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-bootstrap": "^2.10.10",
+    "react-dom": "19.2.3",
+    "recharts": "^3.7.0",
+    "sass": "^1.97.3"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.4",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^9.39.3",
+    "eslint-config-next": "^16.1.6",
+    "prettier": "^3.8.1",
     "typescript": "^5"
   }
 }
