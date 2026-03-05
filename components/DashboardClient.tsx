@@ -87,8 +87,14 @@ export default function DashboardClient({
 
   return (
     <Container fluid className="py-4 px-3 px-md-5">
-      <h1 className="mb-1">GoodBuilders Season 3</h1>
-      <p className="text-muted mb-4">Flow Council Stats Dashboard</p>
+      <div className="mb-4">
+        <h1 className="mb-0" style={{ fontWeight: 700, color: "#056589" }}>
+          GoodBuilders Season 3
+        </h1>
+        <p style={{ color: "#6c757d", fontWeight: 300 }}>
+          Flow Council Stats Dashboard
+        </p>
+      </div>
 
       <Tabs defaultActiveKey="voting" className="mb-4">
         <Tab eventKey="voting" title="Voting">

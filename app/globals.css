@@ -1,3 +1,17 @@
+:root {
+  --fs-primary: #056589;
+  --fs-secondary: #3c655b;
+  --fs-success: #45ad57;
+  --fs-bg: #fbf7ef;
+  --fs-surface: #ffffff;
+  --fs-border: #e8e0d4;
+  --fs-text: #212529;
+  --fs-text-muted: #6c757d;
+  --fs-mentor: #056589;
+  --fs-metrics: #d4890a;
+  --fs-community: #3c655b;
+}
+
 html,
 body {
   max-width: 100vw;
@@ -5,15 +19,109 @@ body {
 }
 
 body {
+  background-color: var(--fs-bg);
+  color: var(--fs-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-weight: 300;
+}
+
+.nav-tabs {
+  border-bottom: 2px solid var(--fs-border);
+  gap: 0.25rem;
+}
+
+.nav-tabs .nav-link {
+  color: var(--fs-text-muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.625rem 1.25rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  margin-bottom: -2px;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.nav-tabs .nav-link:hover {
+  color: var(--fs-primary);
+  border-bottom-color: rgba(5, 101, 137, 0.3);
+}
+
+.nav-tabs .nav-link.active {
+  color: var(--fs-primary);
+  background: transparent;
+  border-bottom: 2px solid var(--fs-primary);
+}
+
+.card {
+  border: 1px solid var(--fs-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.card-header {
+  background-color: rgba(5, 101, 137, 0.04);
+  border-bottom: 1px solid var(--fs-border);
+}
+
+.table {
+  --bs-table-bg: transparent;
+  font-size: 0.875rem;
+}
+
+.table > thead > tr > th {
+  font-weight: 500;
+  color: var(--fs-text-muted);
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  padding: 0.625rem 0.75rem;
+  border-bottom: 2px solid var(--fs-border);
+}
+
+.table > tbody > tr > td {
+  padding: 0.5rem 0.75rem;
+  vertical-align: middle;
 }
 
 th[role="button"] {
   cursor: pointer;
   user-select: none;
+  transition: color 0.15s ease;
 }
 
 th[role="button"]:hover {
-  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--fs-primary);
+  background-color: rgba(5, 101, 137, 0.04);
+}
+
+.badge {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+a {
+  color: var(--fs-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: #044d6a;
+  text-decoration: underline;
+}
+
+.pagination .page-link {
+  color: var(--fs-primary);
+  border-color: var(--fs-border);
+}
+
+.pagination .page-item.active .page-link {
+  background-color: var(--fs-primary);
+  border-color: var(--fs-primary);
+}
+
+.recharts-legend-item-text {
+  font-size: 0.8rem !important;
 }

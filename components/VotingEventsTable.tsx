@@ -181,13 +181,15 @@ export default function VotingEventsTable({
                 </td>
                 <td>
                   <Badge
-                    bg={
-                      row.voterType === "Mentor"
-                        ? "primary"
-                        : row.voterType === "Metrics"
-                          ? "warning"
-                          : "success"
-                    }
+                    style={{
+                      backgroundColor:
+                        row.voterType === "Mentor"
+                          ? "#056589"
+                          : row.voterType === "Metrics"
+                            ? "#d4890a"
+                            : "#3c655b",
+                    }}
+                    bg=""
                   >
                     {row.voterType}
                   </Badge>
@@ -197,7 +199,9 @@ export default function VotingEventsTable({
                 <td>{formatTimestamp(row.submissionTimestamp)}</td>
                 <td>
                   {row.replacedTimestamp === null ? (
-                    <Badge bg="info">Current</Badge>
+                    <Badge style={{ backgroundColor: "#056589" }} bg="">
+                      Current
+                    </Badge>
                   ) : (
                     formatTimestamp(row.replacedTimestamp)
                   )}

@@ -52,15 +52,41 @@ export default function VotingStats({ rows }: { rows: VotingEventRow[] }) {
       className="flex-wrap align-items-stretch"
     >
       <Card className="flex-fill" style={{ minWidth: 140 }}>
-        <Card.Body className="text-center">
-          <div className="text-muted small">Total Votes</div>
-          <div className="fs-3 fw-bold">{stats.totalVotes}</div>
+        <Card.Body className="text-center py-3">
+          <div
+            className="text-uppercase small mb-1"
+            style={{
+              color: "#6c757d",
+              letterSpacing: "0.06em",
+              fontWeight: 500,
+            }}
+          >
+            Total Votes
+          </div>
+          <div
+            style={{ fontSize: "1.75rem", fontWeight: 700, color: "#056589" }}
+          >
+            {stats.totalVotes.toLocaleString()}
+          </div>
         </Card.Body>
       </Card>
       <Card className="flex-fill" style={{ minWidth: 140 }}>
-        <Card.Body className="text-center">
-          <div className="text-muted small"># Voters</div>
-          <div className="fs-3 fw-bold">{stats.uniqueVoters}</div>
+        <Card.Body className="text-center py-3">
+          <div
+            className="text-uppercase small mb-1"
+            style={{
+              color: "#6c757d",
+              letterSpacing: "0.06em",
+              fontWeight: 500,
+            }}
+          >
+            Unique Voters
+          </div>
+          <div
+            style={{ fontSize: "1.75rem", fontWeight: 700, color: "#056589" }}
+          >
+            {stats.uniqueVoters.toLocaleString()}
+          </div>
         </Card.Body>
       </Card>
       <Card className="flex-fill" style={{ minWidth: 300 }}>

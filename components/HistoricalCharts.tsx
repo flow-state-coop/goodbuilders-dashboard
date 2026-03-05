@@ -35,6 +35,19 @@ const tooltipLabelFormatter = ((label: string | number) =>
 const tooltipValueFormatter = ((value: string | number) =>
   formatGDollar(Number(value))) as never;
 
+function buildDailyTicks(data: TimeSeriesPoint[]): number[] {
+  if (data.length === 0) return [];
+  const DAY = 86400;
+  const min = data[0].timestamp;
+  const max = data[data.length - 1].timestamp;
+  const startDay = Math.ceil(min / DAY) * DAY;
+  const ticks: number[] = [];
+  for (let t = startDay; t <= max; t += DAY) {
+    ticks.push(t);
+  }
+  return ticks;
+}
+
 export default function HistoricalCharts({
   fundingRateSeries,
   cumulativeSeries,
@@ -54,6 +67,12 @@ export default function HistoricalCharts({
     generateColor(i, granteeNames.length),
   );
 
+  const rateTicks = buildDailyTicks(fundingRateSeries);
+  const cumTicks = buildDailyTicks(cumulativeSeries);
+  const funderTicks = buildDailyTicks(fundersSeries);
+  const totalRateTicks = buildDailyTicks(totalRateSeries);
+  const totalCumTicks = buildDailyTicks(totalCumulativeSeries);
+
   return (
     <Stack gap={4}>
       <Card>
@@ -69,7 +88,7 @@ export default function HistoricalCharts({
                 tickFormatter={formatTick}
                 type="number"
                 domain={["dataMin", "dataMax"]}
-                scale="time"
+                ticks={rateTicks}
               />
               <YAxis tickFormatter={(v) => formatGDollar(v)} />
               <Tooltip
@@ -105,7 +124,7 @@ export default function HistoricalCharts({
                 tickFormatter={formatTick}
                 type="number"
                 domain={["dataMin", "dataMax"]}
-                scale="time"
+                ticks={cumTicks}
               />
               <YAxis tickFormatter={(v) => formatGDollar(v)} />
               <Tooltip
@@ -141,14 +160,14 @@ export default function HistoricalCharts({
                   tickFormatter={formatTick}
                   type="number"
                   domain={["dataMin", "dataMax"]}
-                  scale="time"
+                  ticks={funderTicks}
                 />
                 <YAxis allowDecimals={false} />
                 <Tooltip labelFormatter={tooltipLabelFormatter} />
                 <Line
                   type="stepAfter"
                   dataKey="funders"
-                  stroke="#6366f1"
+                  stroke="#056589"
                   strokeWidth={2}
                   dot={false}
                 />
@@ -168,7 +187,7 @@ export default function HistoricalCharts({
                   tickFormatter={formatTick}
                   type="number"
                   domain={["dataMin", "dataMax"]}
-                  scale="time"
+                  ticks={totalRateTicks}
                 />
                 <YAxis tickFormatter={(v) => formatGDollar(v)} />
                 <Tooltip
@@ -178,7 +197,7 @@ export default function HistoricalCharts({
                 <Line
                   type="stepAfter"
                   dataKey="totalRate"
-                  stroke="#10b981"
+                  stroke="#3c655b"
                   strokeWidth={2}
                   dot={false}
                 />
@@ -201,7 +220,7 @@ export default function HistoricalCharts({
                 tickFormatter={formatTick}
                 type="number"
                 domain={["dataMin", "dataMax"]}
-                scale="time"
+                ticks={totalCumTicks}
               />
               <YAxis tickFormatter={(v) => formatGDollar(v)} />
               <Tooltip
@@ -211,8 +230,8 @@ export default function HistoricalCharts({
               <Area
                 type="monotone"
                 dataKey="totalCumulative"
-                stroke="#6366f1"
-                fill="#6366f1"
+                stroke="#056589"
+                fill="#056589"
                 fillOpacity={0.3}
               />
             </AreaChart>

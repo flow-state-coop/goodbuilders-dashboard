@@ -383,8 +383,10 @@ export function buildProjectEpochData(
       let poolRate = 0n;
       for (const r of activeSenders.values()) poolRate += r;
 
+      const now = Math.floor(Date.now() / 1000);
       const epochStart = epoch.start || epoch.end - 14 * 24 * 60 * 60;
-      const epochDuration = epoch.end - epochStart;
+      const epochEnd = epoch.end <= now ? epoch.end : now;
+      const epochDuration = epochEnd - epochStart;
       const fundingAccrued =
         weiPerSecToPerMonth(poolRate) *
         share *

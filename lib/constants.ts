@@ -47,9 +47,9 @@ export function categorizeVoter(address: string): VoterType {
 }
 
 export const VOTER_TYPE_COLORS: Record<VoterType, string> = {
-  Mentor: "#6366f1",
-  Metrics: "#f59e0b",
-  Community: "#10b981",
+  Mentor: "#056589",
+  Metrics: "#d4890a",
+  Community: "#3c655b",
 };
 
 export function generateColor(index: number, total: number): string {

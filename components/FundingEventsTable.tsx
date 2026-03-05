@@ -162,7 +162,9 @@ export default function FundingEventsTable({
                 <td>{formatTimestamp(row.startTime)}</td>
                 <td>
                   {row.endTime === null ? (
-                    <Badge bg="success">Active</Badge>
+                    <Badge style={{ backgroundColor: "#3c655b" }} bg="">
+                      Active
+                    </Badge>
                   ) : (
                     formatTimestamp(row.endTime)
                   )}
