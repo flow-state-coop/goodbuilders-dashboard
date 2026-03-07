@@ -5,7 +5,7 @@ export const SUPER_TOKEN = "0x62b8b11039fcfe5ab0c56e502b1c372a3d2a9c7a";
 export const CHAIN_ID = 42220;
 
 export const FLOW_COUNCIL_SUBGRAPH =
-  "https://api.goldsky.com/api/public/project_cmbkdj2bd7cr601uwafoe4u3y/subgraphs/flow-council-celo/v0.3.6/gn";
+  "https://api.goldsky.com/api/public/project_cmbkdj2bd7cr601uwafoe4u3y/subgraphs/flow-council-celo/v0.3.7/gn";
 export const SUPERFLUID_SUBGRAPH =
   "https://subgraph-endpoints.superfluid.dev/celo-mainnet/protocol-v1";
 
@@ -22,20 +22,26 @@ export const EPOCHS = [
 
 const METRICS_VOTERS = new Set(["0x7f0a04f131b8395e4e0bcf4c77e47845c952f49d"]);
 
-const MENTOR_VOTERS = new Set([
-  "0x9f6c0ac954829a863e8d09a46a7a167d5763975c",
-  "0x5a9f2ca69F82621c841eFEfAbD1F244273Cd0245",
-  "0x86213f1cf0a501857b70df35c1cb3c2ecf112844",
-  "0xf62daae4c3f9fadf689f767716a82dfee5026c89",
-  "0x6e7679d53c43a8a9e2cf87fca99a1db9b379fe29",
-  "0x6eeb37b9757dca963120f61c7e0e0160469a44d3",
-  "0x884ff907d5fb8bae239b64aa8ad18ba3f8196038",
-  "0x31cd90c2788f3e390d2bb72871f5ad3f1a4b22a1",
-  "0xa48840d89a761502a4a7d995c74f3864d651a87f",
-  "0x3b7275c428c9b46d2c244e066c0bbadb9b9a8b9f",
-  "0xf3d4ef9c67bbdb40e7a16975a8a8a4d8e41df8d9",
-  "0xa50064d462e17f7091ee62baebeb18bfebe21507",
-]);
+export const MENTOR_NAMES: Record<string, string> = {
+  "0x9f6c0ac954829a863e8d09a46a7a167d5763975c": "Solène Daviaud",
+  "0x5a9f2ca69f82621c841efefabd1f244273cd0245": "Kaspar Kallas",
+  "0x86213f1cf0a501857b70df35c1cb3c2ecf112844": "Ron Turetzky",
+  "0xf62daae4c3f9fadf689f767716a82dfee5026c89": "Philipp Teles",
+  "0x6e7679d53c43a8a9e2cf87fca99a1db9b379fe29": "Cotabe",
+  "0x6eeb37b9757dca963120f61c7e0e0160469a44d3": "Meri Fernandez",
+  "0x884ff907d5fb8bae239b64aa8ad18ba3f8196038": "Graven",
+  "0x31cd90c2788f3e390d2bb72871f5ad3f1a4b22a1": "LuukDAO",
+  "0xa48840d89a761502a4a7d995c74f3864d651a87f": "Hadar Rottenberg",
+  "0x3b7275c428c9b46d2c244e066c0bbadb9b9a8b9f": "Laurence",
+  "0xf3d4ef9c67bbdb40e7a16975a8a8a4d8e41df8d9": "Sam McCarthy",
+  "0xa50064d462e17f7091ee62baebeb18bfebe21507": "Drew Simon",
+};
+
+export const MENTOR_EPOCH_VOTING_POWER: Record<number, number> = {
+  1: 100,
+};
+
+export const MENTOR_VOTERS = new Set(Object.keys(MENTOR_NAMES));
 
 export type VoterType = "Mentor" | "Metrics" | "Community";
 

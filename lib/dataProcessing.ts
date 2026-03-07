@@ -1,4 +1,11 @@
-import { categorizeVoter, EPOCHS, SECONDS_IN_MONTH } from "./constants";
+import {
+  categorizeVoter,
+  EPOCHS,
+  SECONDS_IN_MONTH,
+  MENTOR_VOTERS,
+  MENTOR_NAMES,
+  MENTOR_EPOCH_VOTING_POWER,
+} from "./constants";
 import { weiPerSecToPerMonth } from "./utils";
 import {
   SubgraphBallot,
@@ -8,6 +15,7 @@ import {
   TimeSeriesPoint,
   ProjectEpochData,
   ApplicationData,
+  MentorVoterData,
 } from "@/types";
 
 type AddressNameMap = Map<string, string>;
@@ -17,8 +25,8 @@ export function buildAddressNameMap(
 ): AddressNameMap {
   const map = new Map<string, string>();
   for (const app of applications) {
-    if (app.projectDetails?.name) {
-      map.set(app.fundingAddress.toLowerCase(), app.projectDetails.name);
+    if (app.project_name) {
+      map.set(app.funding_address.toLowerCase(), app.project_name);
     }
   }
   return map;
@@ -31,7 +39,8 @@ export function processVotingEvents(
   const rows: VotingEventRow[] = [];
 
   for (const ballot of ballots) {
-    const voterAddress = ballot.voter.account.toLowerCase();
+    if (ballot.votes.length === 0) continue;
+    const voterAddress = ballot.votes[0].votedBy.toLowerCase();
     const timestamp = Number(ballot.createdAtTimestamp);
 
     for (const vote of ballot.votes) {
@@ -137,7 +146,8 @@ function reconstructAllocationsAtTime(
 
   const seen = new Set<string>();
   for (const ballot of relevantBallots) {
-    const voter = ballot.voter.account.toLowerCase();
+    if (ballot.votes.length === 0) continue;
+    const voter = ballot.votes[0].votedBy.toLowerCase();
     if (seen.has(voter)) continue;
     seen.add(voter);
 
@@ -417,4 +427,102 @@ export function buildProjectEpochData(
   }
 
   return result;
+}
+
+export type MentorBallotVote = {
+  projectName: string;
+  amount: number;
+};
+
+export type MentorBallot = {
+  timestamp: number;
+  epoch: number;
+  votes: MentorBallotVote[];
+  votesUsed: number;
+  votingPower: number;
+};
+
+export type MentorData = {
+  address: string;
+  name: string;
+  currentVotingPower: number;
+  currentVotesUsed: number;
+  currentVotes: MentorBallotVote[];
+  ballots: MentorBallot[];
+};
+
+function getEpochForTimestamp(ts: number): number {
+  for (const epoch of EPOCHS) {
+    if (ts >= epoch.start && ts <= epoch.end) return epoch.number;
+  }
+  return EPOCHS[EPOCHS.length - 1].number;
+}
+
+export function buildMentorBallotData(
+  ballots: SubgraphBallot[],
+  nameMap: AddressNameMap,
+  mentorVoters: MentorVoterData[],
+): MentorData[] {
+  const liveVotingPower = new Map<string, number>();
+  for (const v of mentorVoters) {
+    liveVotingPower.set(v.account.toLowerCase(), Number(v.votingPower));
+  }
+
+  const mentorBallots = new Map<string, SubgraphBallot[]>();
+  for (const ballot of ballots) {
+    if (ballot.votes.length === 0) continue;
+    const addr = ballot.votes[0].votedBy.toLowerCase();
+    if (!MENTOR_VOTERS.has(addr)) continue;
+    let list = mentorBallots.get(addr);
+    if (!list) {
+      list = [];
+      mentorBallots.set(addr, list);
+    }
+    list.push(ballot);
+  }
+
+  const mentors: MentorData[] = [];
+
+  for (const addr of Object.keys(MENTOR_NAMES)) {
+    const raw = mentorBallots.get(addr) ?? [];
+    const sorted = [...raw].sort(
+      (a, b) => Number(b.createdAtTimestamp) - Number(a.createdAtTimestamp),
+    );
+
+    const processedBallots: MentorBallot[] = sorted.map((ballot) => {
+      const ts = Number(ballot.createdAtTimestamp);
+      const epoch = getEpochForTimestamp(ts);
+      const votes: MentorBallotVote[] = ballot.votes
+        .filter((v) => BigInt(v.amount) > 0n)
+        .map((v) => ({
+          projectName:
+            nameMap.get(v.recipient.account.toLowerCase()) ??
+            v.recipient.account,
+          amount: Number(v.amount),
+        }))
+        .sort((a, b) => b.amount - a.amount);
+
+      const votesUsed = votes.reduce((sum, v) => sum + v.amount, 0);
+      const votingPower =
+        MENTOR_EPOCH_VOTING_POWER[epoch] ??
+        liveVotingPower.get(addr) ??
+        votesUsed;
+
+      return { timestamp: ts, epoch, votes, votesUsed, votingPower };
+    });
+
+    const currentPower = liveVotingPower.get(addr) ?? 0;
+    const latestBallot = processedBallots[0];
+
+    mentors.push({
+      address: addr,
+      name: MENTOR_NAMES[addr],
+      currentVotingPower: currentPower,
+      currentVotesUsed: latestBallot?.votesUsed ?? 0,
+      currentVotes: latestBallot?.votes ?? [],
+      ballots: processedBallots,
+    });
+  }
+
+  return mentors.sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -6,17 +6,20 @@ import {
   DISTRIBUTION_POOL,
   SUPER_APP,
   CHAIN_ID,
+  MENTOR_NAMES,
 } from "@/lib/constants";
 import {
   ALL_BALLOTS_QUERY,
   FLOW_UPDATED_EVENTS_QUERY,
   DISTRIBUTION_POOL_QUERY,
+  MENTOR_VOTERS_QUERY,
 } from "@/lib/queries";
 import {
   SubgraphBallot,
   FlowUpdatedEvent,
   PoolData,
   ApplicationData,
+  MentorVoterData,
 } from "@/types";
 import DashboardClient from "@/components/DashboardClient";
 
@@ -67,18 +70,20 @@ async function fetchPool(): Promise<PoolData> {
   return data.pool;
 }
 
+async function fetchMentorVoters(): Promise<MentorVoterData[]> {
+  const accounts = Object.keys(MENTOR_NAMES);
+  const data = await request<{ voters: MentorVoterData[] }>(
+    FLOW_COUNCIL_SUBGRAPH,
+    MENTOR_VOTERS_QUERY,
+    { councilId: COUNCIL_ADDRESS, accounts },
+  );
+  return data.voters;
+}
+
 async function fetchApplications(): Promise<ApplicationData[]> {
   const res = await fetch(
-    "https://flowstate.network/api/flow-council/applications",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chainId: CHAIN_ID,
-        councilId: COUNCIL_ADDRESS,
-      }),
-      next: { revalidate: 300 },
-    },
+    `https://flowstate.network/api/flow-council/applications/public?chainId=${CHAIN_ID}&councilId=${COUNCIL_ADDRESS}`,
+    { next: { revalidate: 300 } },
   );
 
   const json = await res.json();
@@ -88,12 +93,14 @@ async function fetchApplications(): Promise<ApplicationData[]> {
 export const revalidate = 60;
 
 export default async function Page() {
-  const [ballots, flowEvents, pool, applications] = await Promise.all([
-    fetchAllBallots(),
-    fetchFlowEvents(),
-    fetchPool(),
-    fetchApplications(),
-  ]);
+  const [ballots, flowEvents, pool, applications, mentorVoters] =
+    await Promise.all([
+      fetchAllBallots(),
+      fetchFlowEvents(),
+      fetchPool(),
+      fetchApplications(),
+      fetchMentorVoters(),
+    ]);
 
   return (
     <DashboardClient
@@ -101,6 +108,7 @@ export default async function Page() {
       flowEvents={flowEvents}
       pool={pool}
       applications={applications}
+      mentorVoters={mentorVoters}
     />
   );
 }

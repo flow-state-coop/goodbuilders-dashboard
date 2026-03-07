@@ -1,9 +1,13 @@
 import { VoterType } from "@/lib/constants";
 
+export type MentorVoterData = {
+  account: string;
+  votingPower: string;
+};
+
 export type SubgraphBallot = {
   id: string;
-  voter: { account: string };
-  votes: { recipient: { account: string }; amount: string }[];
+  votes: { votedBy: string; recipient: { account: string }; amount: string }[];
   createdAtTimestamp: string;
 };
 
@@ -36,10 +40,10 @@ export type PoolData = {
 };
 
 export type ApplicationData = {
-  fundingAddress: string;
-  projectDetails: { name: string; description: string } | null;
+  funding_address: string;
+  project_name: string;
   status: string;
-  projectId: number;
+  project_id: number;
 };
 
 export type VotingEventRow = {

@@ -9,6 +9,7 @@ import {
   ApplicationData,
   VotingEventRow,
   ProjectEpochData,
+  MentorVoterData,
 } from "@/types";
 import {
   buildAddressNameMap,
@@ -16,23 +17,27 @@ import {
   processStreamPeriods,
   buildTimeSeries,
   buildProjectEpochData,
+  buildMentorBallotData,
 } from "@/lib/dataProcessing";
 import VotingEventsTable from "./VotingEventsTable";
 import VotingStats from "./VotingStats";
 import FundingEventsTable from "./FundingEventsTable";
 import HistoricalCharts from "./HistoricalCharts";
 import ProjectTables from "./ProjectTables";
+import MentorBreakdown from "./MentorBreakdown";
 
 export default function DashboardClient({
   ballots,
   flowEvents,
   pool: _pool,
   applications,
+  mentorVoters,
 }: {
   ballots: SubgraphBallot[];
   flowEvents: FlowUpdatedEvent[];
   pool: PoolData;
   applications: ApplicationData[];
+  mentorVoters: MentorVoterData[];
 }) {
   const nameMap = useMemo(
     () => buildAddressNameMap(applications),
@@ -78,6 +83,11 @@ export default function DashboardClient({
     return filtered;
   }, [ballots, flowEvents, nameMap, granteeNames]);
 
+  const mentorData = useMemo(
+    () => buildMentorBallotData(ballots, nameMap, mentorVoters),
+    [ballots, nameMap, mentorVoters],
+  );
+
   const [filteredVotingRows, setFilteredVotingRows] =
     useState<VotingEventRow[]>(votingEvents);
 
@@ -115,6 +125,10 @@ export default function DashboardClient({
               onFilteredRowsChange={handleFilteredRowsChange}
             />
           </Stack>
+        </Tab>
+
+        <Tab eventKey="mentors" title="Mentors">
+          <MentorBreakdown mentors={mentorData} />
         </Tab>
 
         <Tab eventKey="funding" title="Funding">
