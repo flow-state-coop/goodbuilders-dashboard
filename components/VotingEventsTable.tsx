@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Table, Form, Badge, Pagination, Stack } from "react-bootstrap";
 import { VotingEventRow } from "@/types";
-import { VoterType } from "@/lib/constants";
+import { VoterType, MENTOR_NAMES } from "@/lib/constants";
 import { formatTimestamp, shortenAddress } from "@/lib/utils";
 
 type SortField = keyof VotingEventRow;
@@ -32,7 +32,11 @@ export default function VotingEventsTable({
 
     if (addressFilter) {
       const lower = addressFilter.toLowerCase();
-      result = result.filter((r) => r.voterAddress.includes(lower));
+      result = result.filter(
+        (r) =>
+          r.voterAddress.includes(lower) ||
+          (MENTOR_NAMES[r.voterAddress]?.toLowerCase().includes(lower) ?? false),
+      );
     }
     if (voterTypeFilter) {
       result = result.filter((r) => r.voterType === voterTypeFilter);
@@ -98,7 +102,7 @@ export default function VotingEventsTable({
       <Stack direction="horizontal" gap={3} className="mb-3 flex-wrap">
         <Form.Control
           size="sm"
-          placeholder="Filter by address..."
+          placeholder="Filter by name or address..."
           value={addressFilter}
           onChange={(e) => {
             setAddressFilter(e.target.value);
@@ -143,7 +147,7 @@ export default function VotingEventsTable({
           <thead>
             <tr>
               <th role="button" onClick={() => handleSort("voterAddress")}>
-                Voter Address{sortIndicator("voterAddress")}
+                Voter{sortIndicator("voterAddress")}
               </th>
               <th role="button" onClick={() => handleSort("voterType")}>
                 Voter Type{sortIndicator("voterType")}
@@ -170,13 +174,13 @@ export default function VotingEventsTable({
               <tr
                 key={`${row.voterAddress}-${row.granteeAddress}-${row.submissionTimestamp}-${i}`}
               >
-                <td className="font-monospace" style={{ fontSize: "0.85em" }}>
+                <td style={{ fontSize: "0.85em" }}>
                   <a
                     href={`https://celoscan.io/address/${row.voterAddress}`}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    {shortenAddress(row.voterAddress)}
+                    {MENTOR_NAMES[row.voterAddress] ?? shortenAddress(row.voterAddress)}
                   </a>
                 </td>
                 <td>

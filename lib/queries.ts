@@ -10,10 +10,8 @@ export const ALL_BALLOTS_QUERY = gql`
       orderDirection: asc
     ) {
       id
-      voter {
-        account
-      }
       votes {
+        votedBy
         recipient {
           account
         }
@@ -41,6 +39,15 @@ export const FLOW_UPDATED_EVENTS_QUERY = gql`
       timestamp
       totalAmountStreamedUntilTimestamp
       type
+    }
+  }
+`;
+
+export const MENTOR_VOTERS_QUERY = gql`
+  query MentorVoters($councilId: String!, $accounts: [String!]!) {
+    voters(where: { flowCouncil: $councilId, account_in: $accounts }) {
+      account
+      votingPower
     }
   }
 `;
