@@ -132,6 +132,103 @@ export function processStreamPeriods(
   return periods.sort((a, b) => b.startTime - a.startTime);
 }
 
+type StateEvent = {
+  timestamp: number;
+  type: "ballot" | "flow";
+  flowRate?: bigint;
+  sender?: string;
+};
+
+function mergeEvents(
+  ballots: SubgraphBallot[],
+  flowEvents: FlowUpdatedEvent[],
+): StateEvent[] {
+  const events: StateEvent[] = [];
+  for (const ballot of ballots) {
+    events.push({
+      timestamp: Number(ballot.createdAtTimestamp),
+      type: "ballot",
+    });
+  }
+  for (const fe of flowEvents) {
+    events.push({
+      timestamp: Number(fe.timestamp),
+      type: "flow",
+      flowRate: BigInt(fe.flowRate),
+      sender: fe.sender.toLowerCase(),
+    });
+  }
+  events.sort((a, b) => a.timestamp - b.timestamp);
+  return events;
+}
+
+function computeCumulativeFundingAtTime(
+  ballots: SubgraphBallot[],
+  flowEvents: FlowUpdatedEvent[],
+  granteeAddresses: string[],
+  upTo: number,
+): Map<string, number> {
+  const cumulativeByAddress = new Map<string, number>();
+  for (const addr of granteeAddresses) {
+    cumulativeByAddress.set(addr, 0);
+  }
+
+  const events = mergeEvents(ballots, flowEvents).filter(
+    (e) => e.timestamp <= upTo,
+  );
+  if (events.length === 0) return cumulativeByAddress;
+
+  let totalPoolFlowRate = 0n;
+  const activeSenders = new Map<string, bigint>();
+  let lastTimestamp = events[0].timestamp;
+
+  for (const event of events) {
+    const dt = event.timestamp - lastTimestamp;
+    if (dt > 0) {
+      const shares = computeVoteShares(
+        reconstructAllocationsAtTime(ballots, lastTimestamp),
+      );
+      const totalRate = weiPerSecToPerMonth(totalPoolFlowRate);
+      for (const addr of granteeAddresses) {
+        const share = shares.get(addr) ?? 0;
+        const accrued = (totalRate * share * dt) / SECONDS_IN_MONTH;
+        cumulativeByAddress.set(
+          addr,
+          (cumulativeByAddress.get(addr) ?? 0) + accrued,
+        );
+      }
+    }
+
+    if (event.type === "flow" && event.sender && event.flowRate !== undefined) {
+      if (event.flowRate > 0n) activeSenders.set(event.sender, event.flowRate);
+      else activeSenders.delete(event.sender);
+      totalPoolFlowRate = 0n;
+      for (const rate of activeSenders.values()) totalPoolFlowRate += rate;
+    }
+
+    lastTimestamp = event.timestamp;
+  }
+
+  // Accumulate from last event to upTo
+  const dt = upTo - lastTimestamp;
+  if (dt > 0) {
+    const shares = computeVoteShares(
+      reconstructAllocationsAtTime(ballots, lastTimestamp),
+    );
+    const totalRate = weiPerSecToPerMonth(totalPoolFlowRate);
+    for (const addr of granteeAddresses) {
+      const share = shares.get(addr) ?? 0;
+      const accrued = (totalRate * share * dt) / SECONDS_IN_MONTH;
+      cumulativeByAddress.set(
+        addr,
+        (cumulativeByAddress.get(addr) ?? 0) + accrued,
+      );
+    }
+  }
+
+  return cumulativeByAddress;
+}
+
 function reconstructAllocationsAtTime(
   ballots: SubgraphBallot[],
   timestamp: number,
@@ -208,32 +305,7 @@ export function buildTimeSeries(
     nameByAddress.set(addr, name);
   }
 
-  type StateEvent = {
-    timestamp: number;
-    type: "ballot" | "flow";
-    flowRate?: bigint;
-    sender?: string;
-  };
-
-  const events: StateEvent[] = [];
-
-  for (const ballot of ballots) {
-    events.push({
-      timestamp: Number(ballot.createdAtTimestamp),
-      type: "ballot",
-    });
-  }
-
-  for (const fe of flowEvents) {
-    events.push({
-      timestamp: Number(fe.timestamp),
-      type: "flow",
-      flowRate: BigInt(fe.flowRate),
-      sender: fe.sender.toLowerCase(),
-    });
-  }
-
-  events.sort((a, b) => a.timestamp - b.timestamp);
+  const events = mergeEvents(ballots, flowEvents);
   if (events.length === 0) {
     return {
       fundingRateSeries: [],
@@ -351,12 +423,28 @@ export function buildProjectEpochData(
 
   const granteeAddresses = [...nameMap.keys()];
   const addressToName = nameMap;
+  const now = Math.floor(Date.now() / 1000);
+
+  // Compute cumulative funding at each epoch boundary for all grantees
+  const cumulativeAtEpochEnd: Map<string, number>[] = [];
+  for (const epoch of EPOCHS) {
+    const epochEnd = epoch.end <= now ? epoch.end : now;
+    cumulativeAtEpochEnd.push(
+      computeCumulativeFundingAtTime(
+        ballots,
+        flowEvents,
+        granteeAddresses,
+        epochEnd,
+      ),
+    );
+  }
 
   for (const addr of granteeAddresses) {
     const name = addressToName.get(addr) ?? addr;
     const epochData: ProjectEpochData[] = [];
 
-    for (const epoch of EPOCHS) {
+    for (let i = 0; i < EPOCHS.length; i++) {
+      const epoch = EPOCHS[i];
       const allocations = reconstructAllocationsAtTime(ballots, epoch.end);
 
       let totalVotes = 0n;
@@ -379,28 +467,10 @@ export function buildProjectEpochData(
 
       const totalForPct = Number(totalVotes) || 1;
 
-      const allShares = computeVoteShares(allocations);
-      const share = allShares.get(addr) ?? 0;
-
-      const activeSenders = new Map<string, bigint>();
-      for (const fe of flowEvents) {
-        if (Number(fe.timestamp) > epoch.end) break;
-        const sender = fe.sender.toLowerCase();
-        const rate = BigInt(fe.flowRate);
-        if (rate > 0n) activeSenders.set(sender, rate);
-        else activeSenders.delete(sender);
-      }
-      let poolRate = 0n;
-      for (const r of activeSenders.values()) poolRate += r;
-
-      const now = Math.floor(Date.now() / 1000);
-      const epochStart = epoch.start || epoch.end - 14 * 24 * 60 * 60;
-      const epochEnd = epoch.end <= now ? epoch.end : now;
-      const epochDuration = epochEnd - epochStart;
-      const fundingAccrued =
-        weiPerSecToPerMonth(poolRate) *
-        share *
-        (epochDuration / SECONDS_IN_MONTH);
+      const cumulativeFunding = cumulativeAtEpochEnd[i].get(addr) ?? 0;
+      const prevCumulative =
+        i > 0 ? (cumulativeAtEpochEnd[i - 1].get(addr) ?? 0) : 0;
+      const fundingAccrued = cumulativeFunding - prevCumulative;
 
       epochData.push({
         epoch: epoch.number,
@@ -413,14 +483,8 @@ export function buildProjectEpochData(
           totalVotes > 0n ? (Number(metricsVotes) / totalForPct) * 100 : 0,
         uniqueVoters: uniqueVoters.size,
         fundingAccrued,
-        cumulativeFunding: 0,
+        cumulativeFunding,
       });
-    }
-
-    let cumulative = 0;
-    for (const ed of epochData) {
-      cumulative += ed.fundingAccrued;
-      ed.cumulativeFunding = cumulative;
     }
 
     result.set(name, epochData);
