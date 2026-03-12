@@ -25,6 +25,7 @@ import FundingEventsTable from "./FundingEventsTable";
 import HistoricalCharts from "./HistoricalCharts";
 import ProjectTables from "./ProjectTables";
 import MentorBreakdown from "./MentorBreakdown";
+import GranteeFundingSummary from "./GranteeFundingSummary";
 
 export default function DashboardClient({
   ballots,
@@ -127,14 +128,20 @@ export default function DashboardClient({
           </Stack>
         </Tab>
 
-        <Tab eventKey="mentors" title="Mentors">
-          <MentorBreakdown mentors={mentorData} />
-        </Tab>
-
         <Tab eventKey="funding" title="Funding">
           <Stack gap={4}>
+            <GranteeFundingSummary
+              fundingRateSeries={timeSeries.fundingRateSeries}
+              cumulativeSeries={timeSeries.cumulativeSeries}
+              granteeNames={granteeNames}
+              fundingPeriods={fundingPeriods}
+            />
             <FundingEventsTable rows={fundingPeriods} />
           </Stack>
+        </Tab>
+
+        <Tab eventKey="mentors" title="Mentors">
+          <MentorBreakdown mentors={mentorData} />
         </Tab>
 
         <Tab eventKey="historical" title="Historical">
