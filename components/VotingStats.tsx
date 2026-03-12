@@ -7,7 +7,6 @@ import {
   Pie,
   Cell,
   ResponsiveContainer,
-  Legend,
   Tooltip,
 } from "recharts";
 import { VotingEventRow } from "@/types";
@@ -94,25 +93,39 @@ export default function VotingStats({ rows }: { rows: VotingEventRow[] }) {
           <div className="text-muted small text-center mb-2">
             Votes by Voter Type
           </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
               <Pie
                 data={stats.pieData}
                 dataKey="value"
                 nameKey="name"
                 cx="50%"
                 cy="50%"
-                outerRadius={65}
-                label={({ name, percent }) =>
-                  `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
-                }
+                outerRadius={55}
+                labelLine={{ strokeWidth: 1 }}
+                label={({ cx: cxl, cy: cyl, midAngle, outerRadius: or, name, percent }) => {
+                  const RADIAN = Math.PI / 180;
+                  const radius = (or as number) + 20;
+                  const x = (cxl as number) + radius * Math.cos(-(midAngle as number) * RADIAN);
+                  const y = (cyl as number) + radius * Math.sin(-(midAngle as number) * RADIAN);
+                  return (
+                    <text
+                      x={x}
+                      y={y}
+                      textAnchor={x > (cxl as number) ? "start" : "end"}
+                      dominantBaseline="central"
+                      style={{ fontSize: "0.72rem" }}
+                    >
+                      {name} {((percent ?? 0) * 100).toFixed(0)}%
+                    </text>
+                  );
+                }}
               >
                 {stats.pieData.map((entry) => (
                   <Cell key={entry.name} fill={entry.color} />
                 ))}
               </Pie>
               <Tooltip />
-              <Legend />
             </PieChart>
           </ResponsiveContainer>
         </Card.Body>
