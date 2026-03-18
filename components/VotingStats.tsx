@@ -12,7 +12,13 @@ import {
 import { VotingEventRow } from "@/types";
 import { VoterType, VOTER_TYPE_COLORS } from "@/lib/constants";
 
-export default function VotingStats({ rows }: { rows: VotingEventRow[] }) {
+export default function VotingStats({
+  rows,
+  activeGranteeNames,
+}: {
+  rows: VotingEventRow[];
+  activeGranteeNames: Set<string>;
+}) {
   const stats = useMemo(() => {
     const voters = new Set<string>();
     const byType: Record<VoterType, bigint> = {
@@ -24,6 +30,7 @@ export default function VotingStats({ rows }: { rows: VotingEventRow[] }) {
 
     for (const row of rows) {
       if (row.replacedTimestamp !== null) continue;
+      if (!activeGranteeNames.has(row.granteeName)) continue;
       voters.add(row.voterAddress);
       byType[row.voterType] += row.totalVotes;
       totalVotes += row.totalVotes;

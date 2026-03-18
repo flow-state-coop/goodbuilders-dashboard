@@ -1,10 +1,15 @@
 "use client";
 
-import { Card, Col, Row, Table } from "react-bootstrap";
+import { Badge, Card, Col, Row, Table } from "react-bootstrap";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { ProjectEpochData } from "@/types";
 import { EPOCHS, SECONDS_IN_MONTH, VOTER_TYPE_COLORS } from "@/lib/constants";
 import { formatGDollar } from "@/lib/utils";
+
+const STATUS_BADGE_STYLES: Record<string, { label: string; bg: string }> = {
+  REMOVED: { label: "Removed", bg: "#dc3545" },
+  GRADUATED: { label: "Graduated", bg: "#6f42c1" },
+};
 
 function EpochCell({
   epochNum,
@@ -24,8 +29,10 @@ function EpochCell({
 
 export default function ProjectTables({
   data,
+  granteeStatuses,
 }: {
   data: Map<string, ProjectEpochData[]>;
+  granteeStatuses: Map<string, string>;
 }) {
   const now = Math.floor(Date.now() / 1000);
   const activeEpochNumbers = new Set(
@@ -62,7 +69,21 @@ export default function ProjectTables({
         return (
           <Col key={name}>
             <Card className="h-100">
-              <Card.Header className="fw-bold">{name}</Card.Header>
+              <Card.Header className="fw-bold d-flex align-items-center gap-2">
+                {name}
+                {(() => {
+                  const status = granteeStatuses.get(name);
+                  const badge = status ? STATUS_BADGE_STYLES[status] : null;
+                  return badge ? (
+                    <Badge
+                      bg=""
+                      style={{ backgroundColor: badge.bg, fontSize: "0.7em", fontWeight: 500 }}
+                    >
+                      {badge.label}
+                    </Badge>
+                  ) : null;
+                })()}
+              </Card.Header>
               <Card.Body>
                 <div
                   className="table-responsive"

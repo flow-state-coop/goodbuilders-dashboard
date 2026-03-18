@@ -45,23 +45,51 @@ export default function DashboardClient({
     [applications],
   );
 
+  const { activeGranteeNames, removedGranteeAddresses, granteeStatuses } =
+    useMemo(() => {
+      const active = new Set<string>();
+      const removed = new Map<string, string>();
+      const statuses = new Map<string, string>();
+      for (const app of applications) {
+        const addr = app.funding_address.toLowerCase();
+        if (app.status === "REMOVED" || app.status === "GRADUATED") {
+          removed.set(addr, app.project_name);
+          if (app.project_name) statuses.set(app.project_name, app.status);
+        } else if (app.project_name) {
+          active.add(app.project_name);
+        }
+      }
+      return {
+        activeGranteeNames: active,
+        removedGranteeAddresses: removed,
+        granteeStatuses: statuses,
+      };
+    }, [applications]);
+
+  // When there's exactly one removed grantee, null recipients can be mapped to them.
+  // With multiple removed grantees, null recipients are ambiguous and must be skipped.
+  const removedGranteeAddress = removedGranteeAddresses.size === 1
+    ? [...removedGranteeAddresses.keys()][0]
+    : null;
+
   const granteeNames = useMemo(() => {
     const namesWithVotes = new Set<string>();
     for (const ballot of ballots) {
       for (const vote of ballot.votes) {
         if (BigInt(vote.amount) > 0n) {
-          const addr = vote.recipient.account.toLowerCase();
+          const addr = vote.recipient?.account?.toLowerCase() ?? removedGranteeAddress;
+          if (!addr) continue;
           const name = nameMap.get(addr);
           if (name) namesWithVotes.add(name);
         }
       }
     }
     return [...namesWithVotes].sort();
-  }, [ballots, nameMap]);
+  }, [ballots, nameMap, removedGranteeAddress]);
 
   const votingEvents = useMemo(
-    () => processVotingEvents(ballots, nameMap),
-    [ballots, nameMap],
+    () => processVotingEvents(ballots, nameMap, removedGranteeAddress),
+    [ballots, nameMap, removedGranteeAddress],
   );
 
   const fundingPeriods = useMemo(
@@ -70,23 +98,30 @@ export default function DashboardClient({
   );
 
   const timeSeries = useMemo(
-    () => buildTimeSeries(ballots, flowEvents, granteeNames, nameMap),
-    [ballots, flowEvents, granteeNames, nameMap],
+    () => buildTimeSeries(ballots, flowEvents, granteeNames, removedGranteeAddress, nameMap),
+    [ballots, flowEvents, granteeNames, removedGranteeAddress, nameMap],
   );
 
   const projectEpochData = useMemo(() => {
-    const allData = buildProjectEpochData(ballots, flowEvents, nameMap);
+    const allData = buildProjectEpochData(ballots, flowEvents, nameMap, removedGranteeAddress);
     const granteeSet = new Set(granteeNames);
     const filtered = new Map<string, ProjectEpochData[]>();
     for (const [name, epochs] of allData) {
       if (granteeSet.has(name)) filtered.set(name, epochs);
     }
     return filtered;
-  }, [ballots, flowEvents, nameMap, granteeNames]);
+  }, [ballots, flowEvents, nameMap, removedGranteeAddress, granteeNames]);
 
   const mentorData = useMemo(
-    () => buildMentorBallotData(ballots, nameMap, mentorVoters),
-    [ballots, nameMap, mentorVoters],
+    () =>
+      buildMentorBallotData(
+        ballots,
+        nameMap,
+        mentorVoters,
+        activeGranteeNames,
+        removedGranteeAddress,
+      ),
+    [ballots, nameMap, mentorVoters, activeGranteeNames, removedGranteeAddress],
   );
 
   const [filteredVotingRows, setFilteredVotingRows] =
@@ -119,10 +154,14 @@ export default function DashboardClient({
       <Tabs defaultActiveKey="voting" className="mb-4">
         <Tab eventKey="voting" title="Voting">
           <Stack gap={4}>
-            <VotingStats rows={filteredVotingRows} />
+            <VotingStats
+              rows={filteredVotingRows}
+              activeGranteeNames={activeGranteeNames}
+            />
             <VotingEventsTable
               rows={votingEvents}
               granteeNames={granteeNames}
+              activeGranteeNames={activeGranteeNames}
               onFilteredRowsChange={handleFilteredRowsChange}
             />
           </Stack>
@@ -135,6 +174,7 @@ export default function DashboardClient({
               cumulativeSeries={timeSeries.cumulativeSeries}
               granteeNames={granteeNames}
               fundingPeriods={fundingPeriods}
+              activeGranteeNames={activeGranteeNames}
             />
             <FundingEventsTable rows={fundingPeriods} />
           </Stack>
@@ -156,7 +196,7 @@ export default function DashboardClient({
         </Tab>
 
         <Tab eventKey="projects" title="Epochs">
-          <ProjectTables data={projectEpochData} />
+          <ProjectTables data={projectEpochData} granteeStatuses={granteeStatuses} />
         </Tab>
       </Tabs>
     </Container>

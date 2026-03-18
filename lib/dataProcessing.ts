@@ -35,6 +35,7 @@ export function buildAddressNameMap(
 export function processVotingEvents(
   ballots: SubgraphBallot[],
   nameMap: AddressNameMap,
+  removedGranteeAddress: string | null,
 ): VotingEventRow[] {
   const rows: VotingEventRow[] = [];
 
@@ -45,8 +46,9 @@ export function processVotingEvents(
 
     for (const vote of ballot.votes) {
       if (BigInt(vote.amount) === 0n) continue;
-
-      const granteeAddress = vote.recipient.account.toLowerCase();
+      const granteeAddress =
+        vote.recipient?.account?.toLowerCase() ?? removedGranteeAddress;
+      if (!granteeAddress) continue;
       rows.push({
         voterAddress,
         voterType: categorizeVoter(voterAddress),
@@ -167,6 +169,7 @@ function computeCumulativeFundingAtTime(
   flowEvents: FlowUpdatedEvent[],
   granteeAddresses: string[],
   upTo: number,
+  removedGranteeAddress: string | null,
 ): Map<string, number> {
   const cumulativeByAddress = new Map<string, number>();
   for (const addr of granteeAddresses) {
@@ -186,7 +189,7 @@ function computeCumulativeFundingAtTime(
     const dt = event.timestamp - lastTimestamp;
     if (dt > 0) {
       const shares = computeVoteShares(
-        reconstructAllocationsAtTime(ballots, lastTimestamp),
+        reconstructAllocationsAtTime(ballots, lastTimestamp, removedGranteeAddress),
       );
       const totalRate = weiPerSecToPerMonth(totalPoolFlowRate);
       for (const addr of granteeAddresses) {
@@ -213,7 +216,7 @@ function computeCumulativeFundingAtTime(
   const dt = upTo - lastTimestamp;
   if (dt > 0) {
     const shares = computeVoteShares(
-      reconstructAllocationsAtTime(ballots, lastTimestamp),
+      reconstructAllocationsAtTime(ballots, lastTimestamp, removedGranteeAddress),
     );
     const totalRate = weiPerSecToPerMonth(totalPoolFlowRate);
     for (const addr of granteeAddresses) {
@@ -232,6 +235,7 @@ function computeCumulativeFundingAtTime(
 function reconstructAllocationsAtTime(
   ballots: SubgraphBallot[],
   timestamp: number,
+  removedGranteeAddress: string | null,
 ): Map<string, Map<string, bigint>> {
   const allocations = new Map<string, Map<string, bigint>>();
 
@@ -252,7 +256,9 @@ function reconstructAllocationsAtTime(
     for (const vote of ballot.votes) {
       const amount = BigInt(vote.amount);
       if (amount > 0n) {
-        voterAllocs.set(vote.recipient.account.toLowerCase(), amount);
+        const addr =
+          vote.recipient?.account?.toLowerCase() ?? removedGranteeAddress;
+        if (addr) voterAllocs.set(addr, amount);
       }
     }
     if (voterAllocs.size > 0) {
@@ -292,6 +298,7 @@ export function buildTimeSeries(
   ballots: SubgraphBallot[],
   flowEvents: FlowUpdatedEvent[],
   granteeNames: string[],
+  removedGranteeAddress: string | null,
   nameMap: AddressNameMap,
 ): {
   fundingRateSeries: TimeSeriesPoint[];
@@ -337,7 +344,7 @@ export function buildTimeSeries(
 
     if (dt > 0) {
       const shares = computeVoteShares(
-        reconstructAllocationsAtTime(ballots, lastTimestamp),
+        reconstructAllocationsAtTime(ballots, lastTimestamp, removedGranteeAddress),
       );
       const totalRate = weiPerSecToPerMonth(totalPoolFlowRate);
 
@@ -370,7 +377,7 @@ export function buildTimeSeries(
     }
 
     const shares = computeVoteShares(
-      reconstructAllocationsAtTime(ballots, event.timestamp),
+      reconstructAllocationsAtTime(ballots, event.timestamp, removedGranteeAddress),
     );
     const totalRate = weiPerSecToPerMonth(totalPoolFlowRate);
 
@@ -418,6 +425,7 @@ export function buildProjectEpochData(
   ballots: SubgraphBallot[],
   flowEvents: FlowUpdatedEvent[],
   nameMap: AddressNameMap,
+  removedGranteeAddress: string | null,
 ): Map<string, ProjectEpochData[]> {
   const result = new Map<string, ProjectEpochData[]>();
 
@@ -435,6 +443,7 @@ export function buildProjectEpochData(
         flowEvents,
         granteeAddresses,
         epochEnd,
+        removedGranteeAddress,
       ),
     );
   }
@@ -445,7 +454,7 @@ export function buildProjectEpochData(
 
     for (let i = 0; i < EPOCHS.length; i++) {
       const epoch = EPOCHS[i];
-      const allocations = reconstructAllocationsAtTime(ballots, epoch.end);
+      const allocations = reconstructAllocationsAtTime(ballots, epoch.end, removedGranteeAddress);
 
       let totalVotes = 0n;
       let mentorVotes = 0n;
@@ -526,6 +535,8 @@ export function buildMentorBallotData(
   ballots: SubgraphBallot[],
   nameMap: AddressNameMap,
   mentorVoters: MentorVoterData[],
+  activeGranteeNames: Set<string>,
+  removedGranteeAddress: string | null,
 ): MentorData[] {
   const liveVotingPower = new Map<string, number>();
   for (const v of mentorVoters) {
@@ -557,13 +568,15 @@ export function buildMentorBallotData(
       const ts = Number(ballot.createdAtTimestamp);
       const epoch = getEpochForTimestamp(ts);
       const votes: MentorBallotVote[] = ballot.votes
-        .filter((v) => BigInt(v.amount) > 0n)
-        .map((v) => ({
-          projectName:
-            nameMap.get(v.recipient.account.toLowerCase()) ??
-            v.recipient.account,
-          amount: Number(v.amount),
-        }))
+        .filter((v) => BigInt(v.amount) > 0n && (v.recipient?.account || removedGranteeAddress))
+        .map((v) => {
+          const granteeAddr =
+            v.recipient?.account?.toLowerCase() ?? removedGranteeAddress!;
+          return {
+            projectName: nameMap.get(granteeAddr) ?? granteeAddr,
+            amount: Number(v.amount),
+          };
+        })
         .sort((a, b) => b.amount - a.amount);
 
       const votesUsed = votes.reduce((sum, v) => sum + v.amount, 0);
@@ -578,12 +591,16 @@ export function buildMentorBallotData(
     const currentPower = liveVotingPower.get(addr) ?? 0;
     const latestBallot = processedBallots[0];
 
+    const currentVotes = (latestBallot?.votes ?? []).filter((v) =>
+      activeGranteeNames.has(v.projectName),
+    );
+
     mentors.push({
       address: addr,
       name: MENTOR_NAMES[addr],
       currentVotingPower: currentPower,
-      currentVotesUsed: latestBallot?.votesUsed ?? 0,
-      currentVotes: latestBallot?.votes ?? [],
+      currentVotesUsed: currentVotes.reduce((sum, v) => sum + v.amount, 0),
+      currentVotes,
       ballots: processedBallots,
     });
   }
