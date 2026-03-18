@@ -1,6 +1,7 @@
 import {
   categorizeVoter,
   EPOCHS,
+  GRANTEE_POOL_SHARE,
   SECONDS_IN_MONTH,
   MENTOR_VOTERS,
   MENTOR_NAMES,
@@ -191,7 +192,7 @@ function computeCumulativeFundingAtTime(
       const shares = computeVoteShares(
         reconstructAllocationsAtTime(ballots, lastTimestamp, removedGranteeAddress),
       );
-      const totalRate = weiPerSecToPerMonth(totalPoolFlowRate);
+      const totalRate = weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
       for (const addr of granteeAddresses) {
         const share = shares.get(addr) ?? 0;
         const accrued = (totalRate * share * dt) / SECONDS_IN_MONTH;
@@ -218,7 +219,7 @@ function computeCumulativeFundingAtTime(
     const shares = computeVoteShares(
       reconstructAllocationsAtTime(ballots, lastTimestamp, removedGranteeAddress),
     );
-    const totalRate = weiPerSecToPerMonth(totalPoolFlowRate);
+    const totalRate = weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
     for (const addr of granteeAddresses) {
       const share = shares.get(addr) ?? 0;
       const accrued = (totalRate * share * dt) / SECONDS_IN_MONTH;
@@ -346,7 +347,7 @@ export function buildTimeSeries(
       const shares = computeVoteShares(
         reconstructAllocationsAtTime(ballots, lastTimestamp, removedGranteeAddress),
       );
-      const totalRate = weiPerSecToPerMonth(totalPoolFlowRate);
+      const totalRate = weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
 
       for (const name of granteeNames) {
         const addr = [...nameByAddress.entries()].find(
@@ -361,7 +362,7 @@ export function buildTimeSeries(
         );
       }
       totalCumulative +=
-        (weiPerSecToPerMonth(totalPoolFlowRate) * dt) / SECONDS_IN_MONTH;
+        (weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE * dt) / SECONDS_IN_MONTH;
     }
 
     if (event.type === "flow" && event.sender && event.flowRate !== undefined) {
@@ -379,7 +380,7 @@ export function buildTimeSeries(
     const shares = computeVoteShares(
       reconstructAllocationsAtTime(ballots, event.timestamp, removedGranteeAddress),
     );
-    const totalRate = weiPerSecToPerMonth(totalPoolFlowRate);
+    const totalRate = weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
 
     const ratePoint: TimeSeriesPoint = { timestamp: event.timestamp };
     const cumPoint: TimeSeriesPoint = { timestamp: event.timestamp };

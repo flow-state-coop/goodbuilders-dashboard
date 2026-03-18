@@ -19,6 +19,7 @@ import {
   buildProjectEpochData,
   buildMentorBallotData,
 } from "@/lib/dataProcessing";
+import { weiPerSecToPerMonth } from "@/lib/utils";
 import VotingEventsTable from "./VotingEventsTable";
 import VotingStats from "./VotingStats";
 import FundingEventsTable from "./FundingEventsTable";
@@ -30,7 +31,7 @@ import GranteeFundingSummary from "./GranteeFundingSummary";
 export default function DashboardClient({
   ballots,
   flowEvents,
-  pool: _pool,
+  pool,
   applications,
   mentorVoters,
 }: {
@@ -44,6 +45,26 @@ export default function DashboardClient({
     () => buildAddressNameMap(applications),
     [applications],
   );
+
+  const currentGranteeRates = useMemo(() => {
+    const rates = new Map<string, number>();
+    if (!pool) return rates;
+    const poolFlowRate = BigInt(pool.flowRate);
+    const totalUnits = BigInt(pool.totalUnits);
+    if (totalUnits === 0n) return rates;
+    const poolRatePerMonth = weiPerSecToPerMonth(poolFlowRate);
+    for (const member of pool.poolMembers) {
+      if (!member.account) continue;
+      const units = BigInt(member.units);
+      if (units === 0n) continue;
+      const addr = member.account.id.toLowerCase();
+      const name = nameMap.get(addr);
+      if (name) {
+        rates.set(name, poolRatePerMonth * Number(units) / Number(totalUnits));
+      }
+    }
+    return rates;
+  }, [pool, nameMap]);
 
   const { activeGranteeNames, removedGranteeAddresses, granteeStatuses } =
     useMemo(() => {
@@ -170,11 +191,10 @@ export default function DashboardClient({
         <Tab eventKey="funding" title="Funding">
           <Stack gap={4}>
             <GranteeFundingSummary
-              fundingRateSeries={timeSeries.fundingRateSeries}
               cumulativeSeries={timeSeries.cumulativeSeries}
               granteeNames={granteeNames}
               fundingPeriods={fundingPeriods}
-              activeGranteeNames={activeGranteeNames}
+              currentGranteeRates={currentGranteeRates}
             />
             <FundingEventsTable rows={fundingPeriods} />
           </Stack>

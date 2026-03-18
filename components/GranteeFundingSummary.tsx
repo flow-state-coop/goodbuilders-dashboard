@@ -74,25 +74,19 @@ type SortField = "name" | "rate" | "cumulative";
 type SortDir = "asc" | "desc";
 
 export default function GranteeFundingSummary({
-  fundingRateSeries,
   cumulativeSeries,
   granteeNames,
   fundingPeriods,
-  activeGranteeNames,
+  currentGranteeRates,
 }: {
-  fundingRateSeries: TimeSeriesPoint[];
   cumulativeSeries: TimeSeriesPoint[];
   granteeNames: string[];
   fundingPeriods: FundingPeriodRow[];
-  activeGranteeNames: Set<string>;
+  currentGranteeRates: Map<string, number>;
 }) {
   const [sortField, setSortField] = useState<SortField>("cumulative");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  const latestRate =
-    fundingRateSeries.length > 0
-      ? fundingRateSeries[fundingRateSeries.length - 1]
-      : null;
   const latestCumulative =
     cumulativeSeries.length > 0
       ? cumulativeSeries[cumulativeSeries.length - 1]
@@ -102,12 +96,10 @@ export default function GranteeFundingSummary({
     () =>
       granteeNames.map((name) => ({
         name,
-        rate: activeGranteeNames.has(name)
-          ? ((latestRate?.[name] as number) ?? 0)
-          : 0,
+        rate: currentGranteeRates.get(name) ?? 0,
         cumulative: (latestCumulative?.[name] as number) ?? 0,
       })),
-    [granteeNames, latestRate, latestCumulative, activeGranteeNames],
+    [granteeNames, latestCumulative, currentGranteeRates],
   );
 
   const rows = useMemo(() => {

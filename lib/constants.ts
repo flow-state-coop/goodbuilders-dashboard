@@ -10,6 +10,7 @@ export const SUPERFLUID_SUBGRAPH =
   "https://subgraph-endpoints.superfluid.dev/celo-mainnet/protocol-v1";
 
 export const SECONDS_IN_MONTH = (365 / 12) * 24 * 60 * 60;
+export const GRANTEE_POOL_SHARE = 0.95;
 
 export const EPOCHS = [
   { number: 1, start: 0, end: 1772625600 },
