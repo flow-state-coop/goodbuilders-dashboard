@@ -26,7 +26,7 @@ const METRICS_VOTERS = new Set(["0x7f0a04f131b8395e4e0bcf4c77e47845c952f49d"]);
 export const MENTOR_NAMES: Record<string, string> = {
   "0x9f6c0ac954829a863e8d09a46a7a167d5763975c": "Solène Daviaud",
   "0x5a9f2ca69f82621c841efefabd1f244273cd0245": "Kaspar Kallas",
-  "0x86213f1cf0a501857b70df35c1cb3c2ecf112844": "Ron Turetzky",
+  "0x0994e0206e3fa5dea037a6bfbcf168b94bf74bc3": "Rael",
   "0xf62daae4c3f9fadf689f767716a82dfee5026c89": "Philipp Teles",
   "0x6e7679d53c43a8a9e2cf87fca99a1db9b379fe29": "Cotabe",
   "0x6eeb37b9757dca963120f61c7e0e0160469a44d3": "Meri Fernandez",
