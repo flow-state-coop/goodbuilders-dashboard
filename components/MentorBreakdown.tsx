@@ -2,19 +2,20 @@
 
 import { useMemo, useState } from "react";
 import { Card, Col, Row, Stack, Table, Form } from "react-bootstrap";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { MentorData, MentorBallotVote } from "@/lib/dataProcessing";
 import { generateColor } from "@/lib/constants";
 import { formatTimestamp } from "@/lib/utils";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function renderPieLabel({ cx, cy, midAngle, outerRadius: or, name, percent }: any) {
+function renderPieLabel({
+  cx,
+  cy,
+  midAngle,
+  outerRadius: or,
+  name,
+  percent,
+}: any) {
   const RADIAN = Math.PI / 180;
   const radius = or + 20;
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -156,7 +157,10 @@ function MentorSummary({ mentors }: { mentors: MentorData[] }) {
                 Mentor Votes by Grantee
               </div>
               {summary.pieData.length > 0 ? (
-                <div className="table-responsive" style={{ fontSize: "0.85em" }}>
+                <div
+                  className="table-responsive"
+                  style={{ fontSize: "0.85em" }}
+                >
                   <Table bordered size="sm" className="mb-0">
                     <thead>
                       <tr>
@@ -181,7 +185,9 @@ function MentorSummary({ mentors }: { mentors: MentorData[] }) {
                             />
                             {d.name}
                           </td>
-                          <td className="text-end">{d.value.toLocaleString()}</td>
+                          <td className="text-end">
+                            {d.value.toLocaleString()}
+                          </td>
                           <td className="text-end">
                             {totalVotesAllProjects > 0
                               ? (
@@ -278,9 +284,7 @@ function MentorCard({ mentor }: { mentor: MentorData }) {
   const votingPower =
     selectedIdx === 0 ? mentor.currentVotingPower : ballot.votingPower;
   const pct =
-    votingPower > 0
-      ? ((ballot.votesUsed / votingPower) * 100).toFixed(1)
-      : "0";
+    votingPower > 0 ? ((ballot.votesUsed / votingPower) * 100).toFixed(1) : "0";
 
   const pieData = ballot.votes.map((v, i) => ({
     name: v.projectName,
@@ -335,10 +339,7 @@ function MentorCard({ mentor }: { mentor: MentorData }) {
                         width: 10,
                         height: 10,
                         borderRadius: "50%",
-                        backgroundColor: generateColor(
-                          i,
-                          ballot.votes.length,
-                        ),
+                        backgroundColor: generateColor(i, ballot.votes.length),
                         marginRight: 6,
                       }}
                     />

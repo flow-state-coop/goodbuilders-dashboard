@@ -77,7 +77,11 @@ export default function ProjectTables({
                   return badge ? (
                     <Badge
                       bg=""
-                      style={{ backgroundColor: badge.bg, fontSize: "0.7em", fontWeight: 500 }}
+                      style={{
+                        backgroundColor: badge.bg,
+                        fontSize: "0.7em",
+                        fontWeight: 500,
+                      }}
                     >
                       {badge.label}
                     </Badge>
