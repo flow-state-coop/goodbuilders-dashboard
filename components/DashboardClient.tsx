@@ -60,7 +60,10 @@ export default function DashboardClient({
       const addr = member.account.id.toLowerCase();
       const name = nameMap.get(addr);
       if (name) {
-        rates.set(name, poolRatePerMonth * Number(units) / Number(totalUnits));
+        rates.set(
+          name,
+          (poolRatePerMonth * Number(units)) / Number(totalUnits),
+        );
       }
     }
     return rates;
@@ -89,16 +92,18 @@ export default function DashboardClient({
 
   // When there's exactly one removed grantee, null recipients can be mapped to them.
   // With multiple removed grantees, null recipients are ambiguous and must be skipped.
-  const removedGranteeAddress = removedGranteeAddresses.size === 1
-    ? [...removedGranteeAddresses.keys()][0]
-    : null;
+  const removedGranteeAddress =
+    removedGranteeAddresses.size === 1
+      ? [...removedGranteeAddresses.keys()][0]
+      : null;
 
   const granteeNames = useMemo(() => {
     const namesWithVotes = new Set<string>();
     for (const ballot of ballots) {
       for (const vote of ballot.votes) {
         if (BigInt(vote.amount) > 0n) {
-          const addr = vote.recipient?.account?.toLowerCase() ?? removedGranteeAddress;
+          const addr =
+            vote.recipient?.account?.toLowerCase() ?? removedGranteeAddress;
           if (!addr) continue;
           const name = nameMap.get(addr);
           if (name) namesWithVotes.add(name);
@@ -119,12 +124,24 @@ export default function DashboardClient({
   );
 
   const timeSeries = useMemo(
-    () => buildTimeSeries(ballots, flowEvents, granteeNames, removedGranteeAddress, nameMap),
+    () =>
+      buildTimeSeries(
+        ballots,
+        flowEvents,
+        granteeNames,
+        removedGranteeAddress,
+        nameMap,
+      ),
     [ballots, flowEvents, granteeNames, removedGranteeAddress, nameMap],
   );
 
   const projectEpochData = useMemo(() => {
-    const allData = buildProjectEpochData(ballots, flowEvents, nameMap, removedGranteeAddress);
+    const allData = buildProjectEpochData(
+      ballots,
+      flowEvents,
+      nameMap,
+      removedGranteeAddress,
+    );
     const granteeSet = new Set(granteeNames);
     const filtered = new Map<string, ProjectEpochData[]>();
     for (const [name, epochs] of allData) {
@@ -209,6 +226,7 @@ export default function DashboardClient({
             fundingRateSeries={timeSeries.fundingRateSeries}
             cumulativeSeries={timeSeries.cumulativeSeries}
             fundersSeries={timeSeries.fundersSeries}
+            votersSeries={timeSeries.votersSeries}
             totalRateSeries={timeSeries.totalRateSeries}
             totalCumulativeSeries={timeSeries.totalCumulativeSeries}
             granteeNames={granteeNames}
@@ -216,7 +234,10 @@ export default function DashboardClient({
         </Tab>
 
         <Tab eventKey="projects" title="Epochs">
-          <ProjectTables data={projectEpochData} granteeStatuses={granteeStatuses} />
+          <ProjectTables
+            data={projectEpochData}
+            granteeStatuses={granteeStatuses}
+          />
         </Tab>
       </Tabs>
     </Container>

@@ -190,9 +190,14 @@ function computeCumulativeFundingAtTime(
     const dt = event.timestamp - lastTimestamp;
     if (dt > 0) {
       const shares = computeVoteShares(
-        reconstructAllocationsAtTime(ballots, lastTimestamp, removedGranteeAddress),
+        reconstructAllocationsAtTime(
+          ballots,
+          lastTimestamp,
+          removedGranteeAddress,
+        ),
       );
-      const totalRate = weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
+      const totalRate =
+        weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
       for (const addr of granteeAddresses) {
         const share = shares.get(addr) ?? 0;
         const accrued = (totalRate * share * dt) / SECONDS_IN_MONTH;
@@ -217,9 +222,14 @@ function computeCumulativeFundingAtTime(
   const dt = upTo - lastTimestamp;
   if (dt > 0) {
     const shares = computeVoteShares(
-      reconstructAllocationsAtTime(ballots, lastTimestamp, removedGranteeAddress),
+      reconstructAllocationsAtTime(
+        ballots,
+        lastTimestamp,
+        removedGranteeAddress,
+      ),
     );
-    const totalRate = weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
+    const totalRate =
+      weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
     for (const addr of granteeAddresses) {
       const share = shares.get(addr) ?? 0;
       const accrued = (totalRate * share * dt) / SECONDS_IN_MONTH;
@@ -305,6 +315,7 @@ export function buildTimeSeries(
   fundingRateSeries: TimeSeriesPoint[];
   cumulativeSeries: TimeSeriesPoint[];
   fundersSeries: TimeSeriesPoint[];
+  votersSeries: TimeSeriesPoint[];
   totalRateSeries: TimeSeriesPoint[];
   totalCumulativeSeries: TimeSeriesPoint[];
 } {
@@ -319,6 +330,7 @@ export function buildTimeSeries(
       fundingRateSeries: [],
       cumulativeSeries: [],
       fundersSeries: [],
+      votersSeries: [],
       totalRateSeries: [],
       totalCumulativeSeries: [],
     };
@@ -330,6 +342,7 @@ export function buildTimeSeries(
   const fundingRateSeries: TimeSeriesPoint[] = [];
   const cumulativeSeries: TimeSeriesPoint[] = [];
   const fundersSeries: TimeSeriesPoint[] = [];
+  const votersSeries: TimeSeriesPoint[] = [];
   const totalRateSeries: TimeSeriesPoint[] = [];
   const totalCumulativeSeries: TimeSeriesPoint[] = [];
 
@@ -337,6 +350,12 @@ export function buildTimeSeries(
   for (const name of granteeNames) {
     cumulativeByGrantee.set(name, 0);
   }
+  const allVoters = new Set<string>();
+  const ballotsByTime = [...ballots].sort(
+    (a, b) => Number(a.createdAtTimestamp) - Number(b.createdAtTimestamp),
+  );
+  let ballotIdx = 0;
+
   let totalCumulative = 0;
   let lastTimestamp = events[0].timestamp;
 
@@ -345,9 +364,14 @@ export function buildTimeSeries(
 
     if (dt > 0) {
       const shares = computeVoteShares(
-        reconstructAllocationsAtTime(ballots, lastTimestamp, removedGranteeAddress),
+        reconstructAllocationsAtTime(
+          ballots,
+          lastTimestamp,
+          removedGranteeAddress,
+        ),
       );
-      const totalRate = weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
+      const totalRate =
+        weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
 
       for (const name of granteeNames) {
         const addr = [...nameByAddress.entries()].find(
@@ -362,7 +386,8 @@ export function buildTimeSeries(
         );
       }
       totalCumulative +=
-        (weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE * dt) / SECONDS_IN_MONTH;
+        (weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE * dt) /
+        SECONDS_IN_MONTH;
     }
 
     if (event.type === "flow" && event.sender && event.flowRate !== undefined) {
@@ -378,9 +403,14 @@ export function buildTimeSeries(
     }
 
     const shares = computeVoteShares(
-      reconstructAllocationsAtTime(ballots, event.timestamp, removedGranteeAddress),
+      reconstructAllocationsAtTime(
+        ballots,
+        event.timestamp,
+        removedGranteeAddress,
+      ),
     );
-    const totalRate = weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
+    const totalRate =
+      weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
 
     const ratePoint: TimeSeriesPoint = { timestamp: event.timestamp };
     const cumPoint: TimeSeriesPoint = { timestamp: event.timestamp };
@@ -400,6 +430,22 @@ export function buildTimeSeries(
       funders: activeSenders.size,
     });
 
+    while (
+      ballotIdx < ballotsByTime.length &&
+      Number(ballotsByTime[ballotIdx].createdAtTimestamp) <= event.timestamp
+    ) {
+      const b = ballotsByTime[ballotIdx];
+      if (b.votes.length > 0) {
+        allVoters.add(b.votes[0].votedBy.toLowerCase());
+      }
+      ballotIdx++;
+    }
+
+    votersSeries.push({
+      timestamp: event.timestamp,
+      voters: allVoters.size,
+    });
+
     totalRateSeries.push({
       timestamp: event.timestamp,
       totalRate,
@@ -417,6 +463,7 @@ export function buildTimeSeries(
     fundingRateSeries,
     cumulativeSeries,
     fundersSeries,
+    votersSeries,
     totalRateSeries,
     totalCumulativeSeries,
   };
@@ -455,7 +502,11 @@ export function buildProjectEpochData(
 
     for (let i = 0; i < EPOCHS.length; i++) {
       const epoch = EPOCHS[i];
-      const allocations = reconstructAllocationsAtTime(ballots, epoch.end, removedGranteeAddress);
+      const allocations = reconstructAllocationsAtTime(
+        ballots,
+        epoch.end,
+        removedGranteeAddress,
+      );
 
       let totalVotes = 0n;
       let mentorVotes = 0n;
@@ -569,7 +620,11 @@ export function buildMentorBallotData(
       const ts = Number(ballot.createdAtTimestamp);
       const epoch = getEpochForTimestamp(ts);
       const votes: MentorBallotVote[] = ballot.votes
-        .filter((v) => BigInt(v.amount) > 0n && (v.recipient?.account || removedGranteeAddress))
+        .filter(
+          (v) =>
+            BigInt(v.amount) > 0n &&
+            (v.recipient?.account || removedGranteeAddress),
+        )
         .map((v) => {
           const granteeAddr =
             v.recipient?.account?.toLowerCase() ?? removedGranteeAddress!;

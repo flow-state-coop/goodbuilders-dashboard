@@ -52,6 +52,7 @@ export default function HistoricalCharts({
   fundingRateSeries,
   cumulativeSeries,
   fundersSeries,
+  votersSeries,
   totalRateSeries,
   totalCumulativeSeries,
   granteeNames,
@@ -59,6 +60,7 @@ export default function HistoricalCharts({
   fundingRateSeries: TimeSeriesPoint[];
   cumulativeSeries: TimeSeriesPoint[];
   fundersSeries: TimeSeriesPoint[];
+  votersSeries: TimeSeriesPoint[];
   totalRateSeries: TimeSeriesPoint[];
   totalCumulativeSeries: TimeSeriesPoint[];
   granteeNames: string[];
@@ -70,83 +72,86 @@ export default function HistoricalCharts({
   const rateTicks = buildDailyTicks(fundingRateSeries);
   const cumTicks = buildDailyTicks(cumulativeSeries);
   const funderTicks = buildDailyTicks(fundersSeries);
+  const voterTicks = buildDailyTicks(votersSeries);
   const totalRateTicks = buildDailyTicks(totalRateSeries);
   const totalCumTicks = buildDailyTicks(totalCumulativeSeries);
 
   return (
     <Stack gap={4}>
-      <Card>
-        <Card.Body>
-          <Card.Title className="fs-6">
-            Funding Rate per Grantee (G$/mo)
-          </Card.Title>
-          <ResponsiveContainer width="100%" height={350}>
-            <LineChart data={fundingRateSeries}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="timestamp"
-                tickFormatter={formatTick}
-                type="number"
-                domain={["dataMin", "dataMax"]}
-                ticks={rateTicks}
-              />
-              <YAxis tickFormatter={(v) => formatGDollar(v)} />
-              <Tooltip
-                labelFormatter={tooltipLabelFormatter}
-                formatter={tooltipValueFormatter}
-              />
-              <Legend />
-              {granteeNames.map((name, i) => (
-                <Line
-                  key={name}
-                  type="stepAfter"
-                  dataKey={name}
-                  stroke={colors[i]}
-                  dot={false}
-                  strokeWidth={2}
+      <Stack direction="horizontal" gap={4} className="flex-wrap">
+        <Card className="flex-fill" style={{ minWidth: 400 }}>
+          <Card.Body>
+            <Card.Title className="fs-6">
+              Funding Rate per Grantee (G$/mo)
+            </Card.Title>
+            <ResponsiveContainer width="100%" height={350}>
+              <LineChart data={fundingRateSeries}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="timestamp"
+                  tickFormatter={formatTick}
+                  type="number"
+                  domain={["dataMin", "dataMax"]}
+                  ticks={rateTicks}
                 />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </Card.Body>
-      </Card>
+                <YAxis tickFormatter={(v) => formatGDollar(v)} />
+                <Tooltip
+                  labelFormatter={tooltipLabelFormatter}
+                  formatter={tooltipValueFormatter}
+                />
+                <Legend />
+                {granteeNames.map((name, i) => (
+                  <Line
+                    key={name}
+                    type="stepAfter"
+                    dataKey={name}
+                    stroke={colors[i]}
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </Card.Body>
+        </Card>
 
-      <Card>
-        <Card.Body>
-          <Card.Title className="fs-6">
-            Cumulative Funding per Grantee (G$)
-          </Card.Title>
-          <ResponsiveContainer width="100%" height={350}>
-            <AreaChart data={cumulativeSeries}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="timestamp"
-                tickFormatter={formatTick}
-                type="number"
-                domain={["dataMin", "dataMax"]}
-                ticks={cumTicks}
-              />
-              <YAxis tickFormatter={(v) => formatGDollar(v)} />
-              <Tooltip
-                labelFormatter={tooltipLabelFormatter}
-                formatter={tooltipValueFormatter}
-              />
-              <Legend />
-              {granteeNames.map((name, i) => (
-                <Area
-                  key={name}
-                  type="monotone"
-                  dataKey={name}
-                  stackId="1"
-                  stroke={colors[i]}
-                  fill={colors[i]}
-                  fillOpacity={0.6}
+        <Card className="flex-fill" style={{ minWidth: 400 }}>
+          <Card.Body>
+            <Card.Title className="fs-6">
+              Cumulative Funding per Grantee (G$)
+            </Card.Title>
+            <ResponsiveContainer width="100%" height={350}>
+              <AreaChart data={cumulativeSeries}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="timestamp"
+                  tickFormatter={formatTick}
+                  type="number"
+                  domain={["dataMin", "dataMax"]}
+                  ticks={cumTicks}
                 />
-              ))}
-            </AreaChart>
-          </ResponsiveContainer>
-        </Card.Body>
-      </Card>
+                <YAxis tickFormatter={(v) => formatGDollar(v)} />
+                <Tooltip
+                  labelFormatter={tooltipLabelFormatter}
+                  formatter={tooltipValueFormatter}
+                />
+                <Legend />
+                {granteeNames.map((name, i) => (
+                  <Area
+                    key={name}
+                    type="monotone"
+                    dataKey={name}
+                    stackId="1"
+                    stroke={colors[i]}
+                    fill={colors[i]}
+                    fillOpacity={0.6}
+                  />
+                ))}
+              </AreaChart>
+            </ResponsiveContainer>
+          </Card.Body>
+        </Card>
+      </Stack>
 
       <Stack direction="horizontal" gap={4} className="flex-wrap">
         <Card className="flex-fill" style={{ minWidth: 400 }}>
@@ -178,6 +183,35 @@ export default function HistoricalCharts({
 
         <Card className="flex-fill" style={{ minWidth: 400 }}>
           <Card.Body>
+            <Card.Title className="fs-6"># Unique Voters Over Time</Card.Title>
+            <ResponsiveContainer width="100%" height={250}>
+              <LineChart data={votersSeries}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="timestamp"
+                  tickFormatter={formatTick}
+                  type="number"
+                  domain={["dataMin", "dataMax"]}
+                  ticks={voterTicks}
+                />
+                <YAxis allowDecimals={false} />
+                <Tooltip labelFormatter={tooltipLabelFormatter} />
+                <Line
+                  type="stepAfter"
+                  dataKey="voters"
+                  stroke="#3c655b"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </Card.Body>
+        </Card>
+      </Stack>
+
+      <Stack direction="horizontal" gap={4} className="flex-wrap">
+        <Card className="flex-fill" style={{ minWidth: 400 }}>
+          <Card.Body>
             <Card.Title className="fs-6">Total Funding Rate (G$/mo)</Card.Title>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={totalRateSeries}>
@@ -205,39 +239,39 @@ export default function HistoricalCharts({
             </ResponsiveContainer>
           </Card.Body>
         </Card>
-      </Stack>
 
-      <Card>
-        <Card.Body>
-          <Card.Title className="fs-6">
-            Total Cumulative Funding (G$)
-          </Card.Title>
-          <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={totalCumulativeSeries}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="timestamp"
-                tickFormatter={formatTick}
-                type="number"
-                domain={["dataMin", "dataMax"]}
-                ticks={totalCumTicks}
-              />
-              <YAxis tickFormatter={(v) => formatGDollar(v)} />
-              <Tooltip
-                labelFormatter={tooltipLabelFormatter}
-                formatter={tooltipValueFormatter}
-              />
-              <Area
-                type="monotone"
-                dataKey="totalCumulative"
-                stroke="#056589"
-                fill="#056589"
-                fillOpacity={0.3}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </Card.Body>
-      </Card>
+        <Card className="flex-fill" style={{ minWidth: 400 }}>
+          <Card.Body>
+            <Card.Title className="fs-6">
+              Total Cumulative Funding (G$)
+            </Card.Title>
+            <ResponsiveContainer width="100%" height={250}>
+              <AreaChart data={totalCumulativeSeries}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="timestamp"
+                  tickFormatter={formatTick}
+                  type="number"
+                  domain={["dataMin", "dataMax"]}
+                  ticks={totalCumTicks}
+                />
+                <YAxis tickFormatter={(v) => formatGDollar(v)} />
+                <Tooltip
+                  labelFormatter={tooltipLabelFormatter}
+                  formatter={tooltipValueFormatter}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="totalCumulative"
+                  stroke="#056589"
+                  fill="#056589"
+                  fillOpacity={0.3}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </Card.Body>
+        </Card>
+      </Stack>
     </Stack>
   );
 }

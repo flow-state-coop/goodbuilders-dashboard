@@ -37,7 +37,8 @@ export default function VotingEventsTable({
       result = result.filter(
         (r) =>
           r.voterAddress.includes(lower) ||
-          (MENTOR_NAMES[r.voterAddress]?.toLowerCase().includes(lower) ?? false),
+          (MENTOR_NAMES[r.voterAddress]?.toLowerCase().includes(lower) ??
+            false),
       );
     }
     if (voterTypeFilter) {
@@ -182,7 +183,8 @@ export default function VotingEventsTable({
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    {MENTOR_NAMES[row.voterAddress] ?? shortenAddress(row.voterAddress)}
+                    {MENTOR_NAMES[row.voterAddress] ??
+                      shortenAddress(row.voterAddress)}
                   </a>
                 </td>
                 <td>
@@ -210,10 +212,7 @@ export default function VotingEventsTable({
                         Current
                       </Badge>
                     ) : (
-                      <Badge
-                        style={{ backgroundColor: "#6c757d" }}
-                        bg=""
-                      >
+                      <Badge style={{ backgroundColor: "#6c757d" }} bg="">
                         Removed
                       </Badge>
                     )

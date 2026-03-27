@@ -2,13 +2,7 @@
 
 import { useMemo } from "react";
 import { Card, Stack } from "react-bootstrap";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { VotingEventRow } from "@/types";
 import { VoterType, VOTER_TYPE_COLORS } from "@/lib/constants";
 
@@ -86,7 +80,7 @@ export default function VotingStats({
               fontWeight: 500,
             }}
           >
-            Unique Voters
+            Current Voters
           </div>
           <div
             style={{ fontSize: "1.75rem", fontWeight: 700, color: "#056589" }}
@@ -110,11 +104,22 @@ export default function VotingStats({
                 cy="50%"
                 outerRadius={55}
                 labelLine={{ strokeWidth: 1 }}
-                label={({ cx: cxl, cy: cyl, midAngle, outerRadius: or, name, percent }) => {
+                label={({
+                  cx: cxl,
+                  cy: cyl,
+                  midAngle,
+                  outerRadius: or,
+                  name,
+                  percent,
+                }) => {
                   const RADIAN = Math.PI / 180;
                   const radius = (or as number) + 20;
-                  const x = (cxl as number) + radius * Math.cos(-(midAngle as number) * RADIAN);
-                  const y = (cyl as number) + radius * Math.sin(-(midAngle as number) * RADIAN);
+                  const x =
+                    (cxl as number) +
+                    radius * Math.cos(-(midAngle as number) * RADIAN);
+                  const y =
+                    (cyl as number) +
+                    radius * Math.sin(-(midAngle as number) * RADIAN);
                   return (
                     <text
                       x={x}
