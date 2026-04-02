@@ -13,6 +13,7 @@ import {
   FLOW_UPDATED_EVENTS_QUERY,
   DISTRIBUTION_POOL_QUERY,
   MENTOR_VOTERS_QUERY,
+  RECIPIENTS_QUERY,
 } from "@/lib/queries";
 import {
   SubgraphBallot,
@@ -20,6 +21,7 @@ import {
   PoolData,
   ApplicationData,
   MentorVoterData,
+  SubgraphRecipient,
 } from "@/types";
 import DashboardClient from "@/components/DashboardClient";
 
@@ -80,6 +82,15 @@ async function fetchMentorVoters(): Promise<MentorVoterData[]> {
   return data.voters;
 }
 
+async function fetchRecipients(): Promise<SubgraphRecipient[]> {
+  const data = await request<{ recipients: SubgraphRecipient[] }>(
+    FLOW_COUNCIL_SUBGRAPH,
+    RECIPIENTS_QUERY,
+    { councilId: COUNCIL_ADDRESS },
+  );
+  return data.recipients;
+}
+
 async function fetchApplications(): Promise<ApplicationData[]> {
   const res = await fetch(
     `https://flowstate.network/api/flow-council/applications/public?chainId=${CHAIN_ID}&councilId=${COUNCIL_ADDRESS}`,
@@ -93,13 +104,14 @@ async function fetchApplications(): Promise<ApplicationData[]> {
 export const revalidate = 60;
 
 export default async function Page() {
-  const [ballots, flowEvents, pool, applications, mentorVoters] =
+  const [ballots, flowEvents, pool, applications, mentorVoters, recipients] =
     await Promise.all([
       fetchAllBallots(),
       fetchFlowEvents(),
       fetchPool(),
       fetchApplications(),
       fetchMentorVoters(),
+      fetchRecipients(),
     ]);
 
   return (
@@ -109,6 +121,7 @@ export default async function Page() {
       pool={pool}
       applications={applications}
       mentorVoters={mentorVoters}
+      recipients={recipients}
     />
   );
 }
