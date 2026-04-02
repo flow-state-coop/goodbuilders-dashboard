@@ -79,8 +79,11 @@ export default function HistoricalCharts({
   return (
     <Stack gap={4}>
       <Stack direction="horizontal" gap={4} className="flex-wrap">
-        <Card className="flex-fill" style={{ minWidth: 400 }}>
-          <Card.Body>
+        <Card
+          className="flex-fill"
+          style={{ minWidth: 400, overflow: "visible" }}
+        >
+          <Card.Body style={{ overflow: "visible" }}>
             <Card.Title className="fs-6">
               Funding Rate per Grantee (G$/mo)
             </Card.Title>
@@ -94,12 +97,16 @@ export default function HistoricalCharts({
                   domain={["dataMin", "dataMax"]}
                   ticks={rateTicks}
                 />
-                <YAxis tickFormatter={(v) => formatGDollar(v)} />
+                <YAxis
+                  tickFormatter={(v) => formatGDollar(v)}
+                  tick={{ fontSize: 12 }}
+                />
                 <Tooltip
                   labelFormatter={tooltipLabelFormatter}
                   formatter={tooltipValueFormatter}
+                  wrapperStyle={{ zIndex: 10 }}
                 />
-                <Legend />
+                <Legend verticalAlign="top" wrapperStyle={{ fontSize: 12 }} />
                 {granteeNames.map((name, i) => (
                   <Line
                     key={name}
@@ -115,8 +122,11 @@ export default function HistoricalCharts({
           </Card.Body>
         </Card>
 
-        <Card className="flex-fill" style={{ minWidth: 400 }}>
-          <Card.Body>
+        <Card
+          className="flex-fill"
+          style={{ minWidth: 400, overflow: "visible" }}
+        >
+          <Card.Body style={{ overflow: "visible" }}>
             <Card.Title className="fs-6">
               Cumulative Funding per Grantee (G$)
             </Card.Title>
@@ -130,12 +140,16 @@ export default function HistoricalCharts({
                   domain={["dataMin", "dataMax"]}
                   ticks={cumTicks}
                 />
-                <YAxis tickFormatter={(v) => formatGDollar(v)} />
+                <YAxis
+                  tickFormatter={(v) => formatGDollar(v)}
+                  tick={{ fontSize: 12 }}
+                />
                 <Tooltip
                   labelFormatter={tooltipLabelFormatter}
                   formatter={tooltipValueFormatter}
+                  wrapperStyle={{ zIndex: 10 }}
                 />
-                <Legend />
+                <Legend verticalAlign="top" wrapperStyle={{ fontSize: 12 }} />
                 {granteeNames.map((name, i) => (
                   <Area
                     key={name}
@@ -223,7 +237,10 @@ export default function HistoricalCharts({
                   domain={["dataMin", "dataMax"]}
                   ticks={totalRateTicks}
                 />
-                <YAxis tickFormatter={(v) => formatGDollar(v)} />
+                <YAxis
+                  tickFormatter={(v) => formatGDollar(v)}
+                  tick={{ fontSize: 12 }}
+                />
                 <Tooltip
                   labelFormatter={tooltipLabelFormatter}
                   formatter={tooltipValueFormatter}
@@ -255,7 +272,10 @@ export default function HistoricalCharts({
                   domain={["dataMin", "dataMax"]}
                   ticks={totalCumTicks}
                 />
-                <YAxis tickFormatter={(v) => formatGDollar(v)} />
+                <YAxis
+                  tickFormatter={(v) => formatGDollar(v)}
+                  tick={{ fontSize: 12 }}
+                />
                 <Tooltip
                   labelFormatter={tooltipLabelFormatter}
                   formatter={tooltipValueFormatter}
