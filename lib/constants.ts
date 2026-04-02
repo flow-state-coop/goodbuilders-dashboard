@@ -5,7 +5,7 @@ export const SUPER_TOKEN = "0x62b8b11039fcfe5ab0c56e502b1c372a3d2a9c7a";
 export const CHAIN_ID = 42220;
 
 export const FLOW_COUNCIL_SUBGRAPH =
-  "https://api.goldsky.com/api/public/project_cmbkdj2bd7cr601uwafoe4u3y/subgraphs/flow-council-celo/v0.3.7/gn";
+  "https://api.goldsky.com/api/public/project_cmbkdj2bd7cr601uwafoe4u3y/subgraphs/flow-council-celo/v0.4.1/gn";
 export const SUPERFLUID_SUBGRAPH =
   "https://subgraph-endpoints.superfluid.dev/celo-mainnet/protocol-v1";
 
@@ -40,6 +40,9 @@ export const MENTOR_NAMES: Record<string, string> = {
 
 export const MENTOR_EPOCH_VOTING_POWER: Record<number, number> = {
   1: 100,
+  2: 2596,
+  3: 3418,
+  4: 6785,
 };
 
 export const MENTOR_VOTERS = new Set(Object.keys(MENTOR_NAMES));

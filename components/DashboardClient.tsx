@@ -10,6 +10,7 @@ import {
   VotingEventRow,
   ProjectEpochData,
   MentorVoterData,
+  SubgraphRecipient,
 } from "@/types";
 import {
   buildAddressNameMap,
@@ -18,6 +19,7 @@ import {
   buildTimeSeries,
   buildProjectEpochData,
   buildMentorBallotData,
+  RecipientRemovalMap,
 } from "@/lib/dataProcessing";
 import { weiPerSecToPerMonth } from "@/lib/utils";
 import VotingEventsTable from "./VotingEventsTable";
@@ -34,12 +36,14 @@ export default function DashboardClient({
   pool,
   applications,
   mentorVoters,
+  recipients,
 }: {
   ballots: SubgraphBallot[];
   flowEvents: FlowUpdatedEvent[];
   pool: PoolData;
   applications: ApplicationData[];
   mentorVoters: MentorVoterData[];
+  recipients: SubgraphRecipient[];
 }) {
   const nameMap = useMemo(
     () => buildAddressNameMap(applications),
@@ -69,53 +73,48 @@ export default function DashboardClient({
     return rates;
   }, [pool, nameMap]);
 
-  const { activeGranteeNames, removedGranteeAddresses, granteeStatuses } =
-    useMemo(() => {
-      const active = new Set<string>();
-      const removed = new Map<string, string>();
-      const statuses = new Map<string, string>();
-      for (const app of applications) {
-        const addr = app.funding_address.toLowerCase();
-        if (app.status === "REMOVED" || app.status === "GRADUATED") {
-          removed.set(addr, app.project_name);
-          if (app.project_name) statuses.set(app.project_name, app.status);
-        } else if (app.project_name) {
-          active.add(app.project_name);
-        }
-      }
-      return {
-        activeGranteeNames: active,
-        removedGranteeAddresses: removed,
-        granteeStatuses: statuses,
-      };
-    }, [applications]);
+  const recipientRemovalMap: RecipientRemovalMap = useMemo(() => {
+    const map = new Map<string, number | null>();
+    for (const r of recipients) {
+      map.set(
+        r.account.toLowerCase(),
+        r.removed && r.removedAtTimestamp ? Number(r.removedAtTimestamp) : null,
+      );
+    }
+    return map;
+  }, [recipients]);
 
-  // When there's exactly one removed grantee, null recipients can be mapped to them.
-  // With multiple removed grantees, null recipients are ambiguous and must be skipped.
-  const removedGranteeAddress =
-    removedGranteeAddresses.size === 1
-      ? [...removedGranteeAddresses.keys()][0]
-      : null;
+  const { activeGranteeNames, granteeStatuses } = useMemo(() => {
+    const active = new Set<string>();
+    const statuses = new Map<string, string>();
+    for (const app of applications) {
+      const addr = app.funding_address.toLowerCase();
+      const removalTs = recipientRemovalMap.get(addr);
+      if (removalTs != null) {
+        if (app.project_name) statuses.set(app.project_name, app.status);
+      } else if (app.project_name) {
+        active.add(app.project_name);
+      }
+    }
+    return { activeGranteeNames: active, granteeStatuses: statuses };
+  }, [applications, recipientRemovalMap]);
 
   const granteeNames = useMemo(() => {
     const namesWithVotes = new Set<string>();
     for (const ballot of ballots) {
       for (const vote of ballot.votes) {
         if (BigInt(vote.amount) > 0n) {
-          const addr =
-            vote.recipient?.account?.toLowerCase() ?? removedGranteeAddress;
-          if (!addr) continue;
-          const name = nameMap.get(addr);
+          const name = nameMap.get(vote.recipient.account.toLowerCase());
           if (name) namesWithVotes.add(name);
         }
       }
     }
     return [...namesWithVotes].sort();
-  }, [ballots, nameMap, removedGranteeAddress]);
+  }, [ballots, nameMap]);
 
   const votingEvents = useMemo(
-    () => processVotingEvents(ballots, nameMap, removedGranteeAddress),
-    [ballots, nameMap, removedGranteeAddress],
+    () => processVotingEvents(ballots, nameMap, recipientRemovalMap),
+    [ballots, nameMap, recipientRemovalMap],
   );
 
   const fundingPeriods = useMemo(
@@ -129,10 +128,10 @@ export default function DashboardClient({
         ballots,
         flowEvents,
         granteeNames,
-        removedGranteeAddress,
+        recipientRemovalMap,
         nameMap,
       ),
-    [ballots, flowEvents, granteeNames, removedGranteeAddress, nameMap],
+    [ballots, flowEvents, granteeNames, recipientRemovalMap, nameMap],
   );
 
   const projectEpochData = useMemo(() => {
@@ -140,7 +139,7 @@ export default function DashboardClient({
       ballots,
       flowEvents,
       nameMap,
-      removedGranteeAddress,
+      recipientRemovalMap,
     );
     const granteeSet = new Set(granteeNames);
     const filtered = new Map<string, ProjectEpochData[]>();
@@ -148,18 +147,12 @@ export default function DashboardClient({
       if (granteeSet.has(name)) filtered.set(name, epochs);
     }
     return filtered;
-  }, [ballots, flowEvents, nameMap, removedGranteeAddress, granteeNames]);
+  }, [ballots, flowEvents, nameMap, recipientRemovalMap, granteeNames]);
 
   const mentorData = useMemo(
     () =>
-      buildMentorBallotData(
-        ballots,
-        nameMap,
-        mentorVoters,
-        activeGranteeNames,
-        removedGranteeAddress,
-      ),
-    [ballots, nameMap, mentorVoters, activeGranteeNames, removedGranteeAddress],
+      buildMentorBallotData(ballots, nameMap, mentorVoters, activeGranteeNames),
+    [ballots, nameMap, mentorVoters, activeGranteeNames],
   );
 
   const [filteredVotingRows, setFilteredVotingRows] =
@@ -199,7 +192,6 @@ export default function DashboardClient({
             <VotingEventsTable
               rows={votingEvents}
               granteeNames={granteeNames}
-              activeGranteeNames={activeGranteeNames}
               onFilteredRowsChange={handleFilteredRowsChange}
             />
           </Stack>

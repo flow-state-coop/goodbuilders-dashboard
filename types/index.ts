@@ -5,6 +5,12 @@ export type MentorVoterData = {
   votingPower: string;
 };
 
+export type SubgraphRecipient = {
+  account: string;
+  removed: boolean;
+  removedAtTimestamp: string | null;
+};
+
 export type SubgraphBallot = {
   id: string;
   votes: { votedBy: string; recipient: { account: string }; amount: string }[];

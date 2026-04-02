@@ -14,12 +14,10 @@ const PAGE_SIZE = 25;
 export default function VotingEventsTable({
   rows,
   granteeNames,
-  activeGranteeNames,
   onFilteredRowsChange,
 }: {
   rows: VotingEventRow[];
   granteeNames: string[];
-  activeGranteeNames: Set<string>;
   onFilteredRowsChange: (rows: VotingEventRow[]) => void;
 }) {
   const [sortField, setSortField] = useState<SortField>("submissionTimestamp");
@@ -207,15 +205,9 @@ export default function VotingEventsTable({
                 <td>{formatTimestamp(row.submissionTimestamp)}</td>
                 <td>
                   {row.replacedTimestamp === null ? (
-                    activeGranteeNames.has(row.granteeName) ? (
-                      <Badge style={{ backgroundColor: "#056589" }} bg="">
-                        Current
-                      </Badge>
-                    ) : (
-                      <Badge style={{ backgroundColor: "#6c757d" }} bg="">
-                        Removed
-                      </Badge>
-                    )
+                    <Badge style={{ backgroundColor: "#056589" }} bg="">
+                      Current
+                    </Badge>
                   ) : (
                     formatTimestamp(row.replacedTimestamp)
                   )}

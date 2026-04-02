@@ -52,6 +52,16 @@ export const MENTOR_VOTERS_QUERY = gql`
   }
 `;
 
+export const RECIPIENTS_QUERY = gql`
+  query Recipients($councilId: String!) {
+    recipients(where: { flowCouncil: $councilId }, first: 1000) {
+      account
+      removed
+      removedAtTimestamp
+    }
+  }
+`;
+
 export const DISTRIBUTION_POOL_QUERY = gql`
   query DistributionPool($poolId: String!) {
     pool(id: $poolId) {

@@ -36,7 +36,7 @@ export function buildAddressNameMap(
 export function processVotingEvents(
   ballots: SubgraphBallot[],
   nameMap: AddressNameMap,
-  removedGranteeAddress: string | null,
+  recipientRemovalMap: RecipientRemovalMap,
 ): VotingEventRow[] {
   const rows: VotingEventRow[] = [];
 
@@ -47,9 +47,7 @@ export function processVotingEvents(
 
     for (const vote of ballot.votes) {
       if (BigInt(vote.amount) === 0n) continue;
-      const granteeAddress =
-        vote.recipient?.account?.toLowerCase() ?? removedGranteeAddress;
-      if (!granteeAddress) continue;
+      const granteeAddress = vote.recipient.account.toLowerCase();
       rows.push({
         voterAddress,
         voterType: categorizeVoter(voterAddress),
@@ -82,6 +80,16 @@ export function processVotingEvents(
         ballotTimestamps.indexOf(row.submissionTimestamp) + 1;
       if (nextBallotIdx < ballotTimestamps.length) {
         row.replacedTimestamp = ballotTimestamps[nextBallotIdx];
+      }
+
+      const removalTs = recipientRemovalMap.get(row.granteeAddress);
+      if (removalTs != null && removalTs > row.submissionTimestamp) {
+        if (
+          row.replacedTimestamp === null ||
+          removalTs < row.replacedTimestamp
+        ) {
+          row.replacedTimestamp = removalTs;
+        }
       }
     }
   }
@@ -165,12 +173,14 @@ function mergeEvents(
   return events;
 }
 
+export type RecipientRemovalMap = Map<string, number | null>;
+
 function computeCumulativeFundingAtTime(
   ballots: SubgraphBallot[],
   flowEvents: FlowUpdatedEvent[],
   granteeAddresses: string[],
   upTo: number,
-  removedGranteeAddress: string | null,
+  recipientRemovalMap: RecipientRemovalMap,
 ): Map<string, number> {
   const cumulativeByAddress = new Map<string, number>();
   for (const addr of granteeAddresses) {
@@ -193,7 +203,7 @@ function computeCumulativeFundingAtTime(
         reconstructAllocationsAtTime(
           ballots,
           lastTimestamp,
-          removedGranteeAddress,
+          recipientRemovalMap,
         ),
       );
       const totalRate =
@@ -222,11 +232,7 @@ function computeCumulativeFundingAtTime(
   const dt = upTo - lastTimestamp;
   if (dt > 0) {
     const shares = computeVoteShares(
-      reconstructAllocationsAtTime(
-        ballots,
-        lastTimestamp,
-        removedGranteeAddress,
-      ),
+      reconstructAllocationsAtTime(ballots, lastTimestamp, recipientRemovalMap),
     );
     const totalRate =
       weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
@@ -246,7 +252,7 @@ function computeCumulativeFundingAtTime(
 function reconstructAllocationsAtTime(
   ballots: SubgraphBallot[],
   timestamp: number,
-  removedGranteeAddress: string | null,
+  recipientRemovalMap: RecipientRemovalMap,
 ): Map<string, Map<string, bigint>> {
   const allocations = new Map<string, Map<string, bigint>>();
 
@@ -267,9 +273,10 @@ function reconstructAllocationsAtTime(
     for (const vote of ballot.votes) {
       const amount = BigInt(vote.amount);
       if (amount > 0n) {
-        const addr =
-          vote.recipient?.account?.toLowerCase() ?? removedGranteeAddress;
-        if (addr) voterAllocs.set(addr, amount);
+        const addr = vote.recipient.account.toLowerCase();
+        const removalTs = recipientRemovalMap.get(addr);
+        if (removalTs != null && removalTs <= timestamp) continue;
+        voterAllocs.set(addr, amount);
       }
     }
     if (voterAllocs.size > 0) {
@@ -309,7 +316,7 @@ export function buildTimeSeries(
   ballots: SubgraphBallot[],
   flowEvents: FlowUpdatedEvent[],
   granteeNames: string[],
-  removedGranteeAddress: string | null,
+  recipientRemovalMap: RecipientRemovalMap,
   nameMap: AddressNameMap,
 ): {
   fundingRateSeries: TimeSeriesPoint[];
@@ -367,7 +374,7 @@ export function buildTimeSeries(
         reconstructAllocationsAtTime(
           ballots,
           lastTimestamp,
-          removedGranteeAddress,
+          recipientRemovalMap,
         ),
       );
       const totalRate =
@@ -406,7 +413,7 @@ export function buildTimeSeries(
       reconstructAllocationsAtTime(
         ballots,
         event.timestamp,
-        removedGranteeAddress,
+        recipientRemovalMap,
       ),
     );
     const totalRate =
@@ -473,7 +480,7 @@ export function buildProjectEpochData(
   ballots: SubgraphBallot[],
   flowEvents: FlowUpdatedEvent[],
   nameMap: AddressNameMap,
-  removedGranteeAddress: string | null,
+  recipientRemovalMap: RecipientRemovalMap,
 ): Map<string, ProjectEpochData[]> {
   const result = new Map<string, ProjectEpochData[]>();
 
@@ -491,7 +498,7 @@ export function buildProjectEpochData(
         flowEvents,
         granteeAddresses,
         epochEnd,
-        removedGranteeAddress,
+        recipientRemovalMap,
       ),
     );
   }
@@ -505,7 +512,7 @@ export function buildProjectEpochData(
       const allocations = reconstructAllocationsAtTime(
         ballots,
         epoch.end,
-        removedGranteeAddress,
+        recipientRemovalMap,
       );
 
       let totalVotes = 0n;
@@ -588,7 +595,6 @@ export function buildMentorBallotData(
   nameMap: AddressNameMap,
   mentorVoters: MentorVoterData[],
   activeGranteeNames: Set<string>,
-  removedGranteeAddress: string | null,
 ): MentorData[] {
   const liveVotingPower = new Map<string, number>();
   for (const v of mentorVoters) {
@@ -620,19 +626,13 @@ export function buildMentorBallotData(
       const ts = Number(ballot.createdAtTimestamp);
       const epoch = getEpochForTimestamp(ts);
       const votes: MentorBallotVote[] = ballot.votes
-        .filter(
-          (v) =>
-            BigInt(v.amount) > 0n &&
-            (v.recipient?.account || removedGranteeAddress),
-        )
-        .map((v) => {
-          const granteeAddr =
-            v.recipient?.account?.toLowerCase() ?? removedGranteeAddress!;
-          return {
-            projectName: nameMap.get(granteeAddr) ?? granteeAddr,
-            amount: Number(v.amount),
-          };
-        })
+        .filter((v) => BigInt(v.amount) > 0n)
+        .map((v) => ({
+          projectName:
+            nameMap.get(v.recipient.account.toLowerCase()) ??
+            v.recipient.account.toLowerCase(),
+          amount: Number(v.amount),
+        }))
         .sort((a, b) => b.amount - a.amount);
 
       const votesUsed = votes.reduce((sum, v) => sum + v.amount, 0);
