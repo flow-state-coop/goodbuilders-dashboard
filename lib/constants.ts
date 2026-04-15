@@ -43,6 +43,7 @@ export const MENTOR_EPOCH_VOTING_POWER: Record<number, number> = {
   2: 2596,
   3: 3418,
   4: 6785,
+  5: 7738,
 };
 
 export const MENTOR_VOTERS = new Set(Object.keys(MENTOR_NAMES));
