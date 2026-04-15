@@ -644,8 +644,13 @@ export function buildMentorBallotData(
       return { timestamp: ts, epoch, votes, votesUsed, votingPower };
     });
 
-    const currentPower = liveVotingPower.get(addr) ?? 0;
     const latestBallot = processedBallots[0];
+    const activeEpoch = getEpochForTimestamp(Math.floor(Date.now() / 1000));
+    const currentPower =
+      MENTOR_EPOCH_VOTING_POWER[activeEpoch] ??
+      liveVotingPower.get(addr) ??
+      latestBallot?.votingPower ??
+      0;
 
     const currentVotes = (latestBallot?.votes ?? []).filter((v) =>
       activeGranteeNames.has(v.projectName),

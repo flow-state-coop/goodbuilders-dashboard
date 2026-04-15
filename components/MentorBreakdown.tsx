@@ -281,15 +281,19 @@ function MentorCard({ mentor }: { mentor: MentorData }) {
   }
 
   const ballot = mentor.ballots[selectedIdx];
-  const votingPower =
-    selectedIdx === 0 ? mentor.currentVotingPower : ballot.votingPower;
+  const isCurrent = selectedIdx === 0;
+  const votes = isCurrent ? mentor.currentVotes : ballot.votes;
+  const votesUsed = isCurrent ? mentor.currentVotesUsed : ballot.votesUsed;
+  const votingPower = isCurrent
+    ? mentor.currentVotingPower
+    : ballot.votingPower;
   const pct =
-    votingPower > 0 ? ((ballot.votesUsed / votingPower) * 100).toFixed(1) : "0";
+    votingPower > 0 ? ((votesUsed / votingPower) * 100).toFixed(1) : "0";
 
-  const pieData = ballot.votes.map((v, i) => ({
+  const pieData = votes.map((v, i) => ({
     name: v.projectName,
     value: v.amount,
-    color: generateColor(i, ballot.votes.length),
+    color: generateColor(i, votes.length),
   }));
 
   return (
@@ -313,7 +317,7 @@ function MentorCard({ mentor }: { mentor: MentorData }) {
           className="text-center mb-3"
           style={{ fontSize: "1.1rem", fontWeight: 600 }}
         >
-          <span style={{ color: "#056589" }}>{ballot.votesUsed}</span>
+          <span style={{ color: "#056589" }}>{votesUsed}</span>
           {" / "}
           <span>{votingPower}</span>
           {" votes used "}
@@ -330,7 +334,7 @@ function MentorCard({ mentor }: { mentor: MentorData }) {
               </tr>
             </thead>
             <tbody>
-              {ballot.votes.map((v, i) => (
+              {votes.map((v, i) => (
                 <tr key={v.projectName}>
                   <td>
                     <span
@@ -339,7 +343,7 @@ function MentorCard({ mentor }: { mentor: MentorData }) {
                         width: 10,
                         height: 10,
                         borderRadius: "50%",
-                        backgroundColor: generateColor(i, ballot.votes.length),
+                        backgroundColor: generateColor(i, votes.length),
                         marginRight: 6,
                       }}
                     />
@@ -347,8 +351,8 @@ function MentorCard({ mentor }: { mentor: MentorData }) {
                   </td>
                   <td className="text-end">{v.amount}</td>
                   <td className="text-end">
-                    {ballot.votesUsed > 0
-                      ? ((v.amount / ballot.votesUsed) * 100).toFixed(1)
+                    {votesUsed > 0
+                      ? ((v.amount / votesUsed) * 100).toFixed(1)
                       : "0"}
                     %
                   </td>
