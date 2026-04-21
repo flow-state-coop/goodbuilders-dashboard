@@ -1,7 +1,14 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
-import { Container, Stack, Tab, Tabs } from "react-bootstrap";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
+import { Container, Spinner, Stack, Tab, Tabs } from "react-bootstrap";
 import {
   SubgraphBallot,
   FlowUpdatedEvent,
@@ -19,7 +26,9 @@ import {
   buildTimeSeries,
   buildProjectEpochData,
   buildMentorBallotData,
+  MentorData,
   RecipientRemovalMap,
+  TimeSeries,
 } from "@/lib/dataProcessing";
 import { weiPerSecToPerMonth } from "@/lib/utils";
 import VotingEventsTable from "./VotingEventsTable";
@@ -29,6 +38,14 @@ import HistoricalCharts from "./HistoricalCharts";
 import ProjectTables from "./ProjectTables";
 import MentorBreakdown from "./MentorBreakdown";
 import GranteeFundingSummary from "./GranteeFundingSummary";
+
+function TabLoading() {
+  return (
+    <div className="d-flex justify-content-center align-items-center py-5">
+      <Spinner animation="border" variant="secondary" />
+    </div>
+  );
+}
 
 export default function DashboardClient({
   ballots,
@@ -122,38 +139,70 @@ export default function DashboardClient({
     [flowEvents],
   );
 
-  const timeSeries = useMemo(
-    () =>
-      buildTimeSeries(
+  const [timeSeries, setTimeSeries] = useState<TimeSeries | null>(null);
+  const [projectEpochData, setProjectEpochData] = useState<Map<
+    string,
+    ProjectEpochData[]
+  > | null>(null);
+  const [mentorData, setMentorData] = useState<MentorData[] | null>(null);
+  const [, startDerivedTransition] = useTransition();
+
+  useEffect(() => {
+    let cancelled = false;
+    const compute = () => {
+      if (cancelled) return;
+      const ts = buildTimeSeries(
         ballots,
         flowEvents,
         granteeNames,
         recipientRemovalMap,
         nameMap,
-      ),
-    [ballots, flowEvents, granteeNames, recipientRemovalMap, nameMap],
-  );
-
-  const projectEpochData = useMemo(() => {
-    const allData = buildProjectEpochData(
-      ballots,
-      flowEvents,
-      nameMap,
-      recipientRemovalMap,
-    );
-    const granteeSet = new Set(granteeNames);
-    const filtered = new Map<string, ProjectEpochData[]>();
-    for (const [name, epochs] of allData) {
-      if (granteeSet.has(name)) filtered.set(name, epochs);
+      );
+      const allEpochData = buildProjectEpochData(
+        ballots,
+        flowEvents,
+        nameMap,
+        recipientRemovalMap,
+      );
+      const granteeSet = new Set(granteeNames);
+      const filteredEpochData = new Map<string, ProjectEpochData[]>();
+      for (const [name, epochs] of allEpochData) {
+        if (granteeSet.has(name)) filteredEpochData.set(name, epochs);
+      }
+      const mentors = buildMentorBallotData(
+        ballots,
+        nameMap,
+        mentorVoters,
+        activeGranteeNames,
+      );
+      if (cancelled) return;
+      startDerivedTransition(() => {
+        setTimeSeries(ts);
+        setProjectEpochData(filteredEpochData);
+        setMentorData(mentors);
+      });
+    };
+    let idleHandle: number | null = null;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    if (typeof window.requestIdleCallback === "function") {
+      idleHandle = window.requestIdleCallback(compute, { timeout: 500 });
+    } else {
+      timeoutHandle = setTimeout(compute, 0);
     }
-    return filtered;
-  }, [ballots, flowEvents, nameMap, recipientRemovalMap, granteeNames]);
-
-  const mentorData = useMemo(
-    () =>
-      buildMentorBallotData(ballots, nameMap, mentorVoters, activeGranteeNames),
-    [ballots, nameMap, mentorVoters, activeGranteeNames],
-  );
+    return () => {
+      cancelled = true;
+      if (idleHandle !== null) window.cancelIdleCallback(idleHandle);
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+    };
+  }, [
+    ballots,
+    flowEvents,
+    granteeNames,
+    recipientRemovalMap,
+    nameMap,
+    mentorVoters,
+    activeGranteeNames,
+  ]);
 
   const [filteredVotingRows, setFilteredVotingRows] =
     useState<VotingEventRow[]>(votingEvents);
@@ -161,6 +210,8 @@ export default function DashboardClient({
   const handleFilteredRowsChange = useCallback((rows: VotingEventRow[]) => {
     setFilteredVotingRows(rows);
   }, []);
+
+  const deferredFilteredRows = useDeferredValue(filteredVotingRows);
 
   return (
     <Container fluid className="py-4 px-3 px-md-5">
@@ -182,11 +233,11 @@ export default function DashboardClient({
         </div>
       </div>
 
-      <Tabs defaultActiveKey="voting" className="mb-4">
+      <Tabs defaultActiveKey="voting" className="mb-4" mountOnEnter>
         <Tab eventKey="voting" title="Voting">
           <Stack gap={4}>
             <VotingStats
-              rows={filteredVotingRows}
+              rows={deferredFilteredRows}
               activeGranteeNames={activeGranteeNames}
             />
             <VotingEventsTable
@@ -198,38 +249,54 @@ export default function DashboardClient({
         </Tab>
 
         <Tab eventKey="funding" title="Funding">
-          <Stack gap={4}>
-            <GranteeFundingSummary
-              cumulativeSeries={timeSeries.cumulativeSeries}
-              granteeNames={granteeNames}
-              fundingPeriods={fundingPeriods}
-              currentGranteeRates={currentGranteeRates}
-            />
-            <FundingEventsTable rows={fundingPeriods} />
-          </Stack>
+          {timeSeries ? (
+            <Stack gap={4}>
+              <GranteeFundingSummary
+                cumulativeSeries={timeSeries.cumulativeSeries}
+                granteeNames={granteeNames}
+                fundingPeriods={fundingPeriods}
+                currentGranteeRates={currentGranteeRates}
+              />
+              <FundingEventsTable rows={fundingPeriods} />
+            </Stack>
+          ) : (
+            <TabLoading />
+          )}
         </Tab>
 
         <Tab eventKey="mentors" title="Mentors">
-          <MentorBreakdown mentors={mentorData} />
+          {mentorData ? (
+            <MentorBreakdown mentors={mentorData} />
+          ) : (
+            <TabLoading />
+          )}
         </Tab>
 
         <Tab eventKey="historical" title="Historical">
-          <HistoricalCharts
-            fundingRateSeries={timeSeries.fundingRateSeries}
-            cumulativeSeries={timeSeries.cumulativeSeries}
-            fundersSeries={timeSeries.fundersSeries}
-            votersSeries={timeSeries.votersSeries}
-            totalRateSeries={timeSeries.totalRateSeries}
-            totalCumulativeSeries={timeSeries.totalCumulativeSeries}
-            granteeNames={granteeNames}
-          />
+          {timeSeries ? (
+            <HistoricalCharts
+              fundingRateSeries={timeSeries.fundingRateSeries}
+              cumulativeSeries={timeSeries.cumulativeSeries}
+              fundersSeries={timeSeries.fundersSeries}
+              votersSeries={timeSeries.votersSeries}
+              totalRateSeries={timeSeries.totalRateSeries}
+              totalCumulativeSeries={timeSeries.totalCumulativeSeries}
+              granteeNames={granteeNames}
+            />
+          ) : (
+            <TabLoading />
+          )}
         </Tab>
 
         <Tab eventKey="projects" title="Epochs">
-          <ProjectTables
-            data={projectEpochData}
-            granteeStatuses={granteeStatuses}
-          />
+          {projectEpochData ? (
+            <ProjectTables
+              data={projectEpochData}
+              granteeStatuses={granteeStatuses}
+            />
+          ) : (
+            <TabLoading />
+          )}
         </Tab>
       </Tabs>
     </Container>

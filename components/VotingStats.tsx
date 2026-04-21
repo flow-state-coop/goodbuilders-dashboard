@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Card, Stack } from "react-bootstrap";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { VotingEventRow } from "@/types";
 import { VoterType, VOTER_TYPE_COLORS } from "@/lib/constants";
 
-export default function VotingStats({
+function VotingStats({
   rows,
   activeGranteeNames,
 }: {
@@ -145,3 +145,5 @@ export default function VotingStats({
     </Stack>
   );
 }
+
+export default memo(VotingStats);
