@@ -21,6 +21,17 @@ import {
 
 type AddressNameMap = Map<string, string>;
 
+export type RecipientRemovalMap = Map<string, number | null>;
+
+export type TimeSeries = {
+  fundingRateSeries: TimeSeriesPoint[];
+  cumulativeSeries: TimeSeriesPoint[];
+  fundersSeries: TimeSeriesPoint[];
+  votersSeries: TimeSeriesPoint[];
+  totalRateSeries: TimeSeriesPoint[];
+  totalCumulativeSeries: TimeSeriesPoint[];
+};
+
 export function buildAddressNameMap(
   applications: ApplicationData[],
 ): AddressNameMap {
@@ -71,17 +82,29 @@ export function processVotingEvents(
   }
 
   for (const voterRows of byVoter.values()) {
-    const ballotTimestamps = [
-      ...new Set(voterRows.map((r) => r.submissionTimestamp)),
-    ].sort((a, b) => a - b);
+    voterRows.sort((a, b) => a.submissionTimestamp - b.submissionTimestamp);
+
+    // Each ballot (group of rows sharing a timestamp) is replaced by the next
+    // ballot from the same voter. Walk right-to-left so we know the next ts.
+    let nextTs: number | null = null;
+    let end = voterRows.length;
+    while (end > 0) {
+      const currentTs = voterRows[end - 1].submissionTimestamp;
+      let start = end - 1;
+      while (
+        start > 0 &&
+        voterRows[start - 1].submissionTimestamp === currentTs
+      ) {
+        start--;
+      }
+      for (let j = start; j < end; j++) {
+        voterRows[j].replacedTimestamp = nextTs;
+      }
+      nextTs = currentTs;
+      end = start;
+    }
 
     for (const row of voterRows) {
-      const nextBallotIdx =
-        ballotTimestamps.indexOf(row.submissionTimestamp) + 1;
-      if (nextBallotIdx < ballotTimestamps.length) {
-        row.replacedTimestamp = ballotTimestamps[nextBallotIdx];
-      }
-
       const removalTs = recipientRemovalMap.get(row.granteeAddress);
       if (removalTs != null && removalTs > row.submissionTimestamp) {
         if (
@@ -143,173 +166,153 @@ export function processStreamPeriods(
   return periods.sort((a, b) => b.startTime - a.startTime);
 }
 
-type StateEvent = {
-  timestamp: number;
-  type: "ballot" | "flow";
-  flowRate?: bigint;
-  sender?: string;
+type TimelineEvent =
+  | { type: "ballot"; timestamp: number; ballot: SubgraphBallot }
+  | { type: "flow"; timestamp: number; sender: string; flowRate: bigint };
+
+const TIMELINE_TYPE_ORDER: Record<TimelineEvent["type"], number> = {
+  ballot: 0,
+  flow: 1,
 };
 
-function mergeEvents(
+function buildTimeline(
   ballots: SubgraphBallot[],
   flowEvents: FlowUpdatedEvent[],
-): StateEvent[] {
-  const events: StateEvent[] = [];
+): TimelineEvent[] {
+  const timeline: TimelineEvent[] = [];
   for (const ballot of ballots) {
-    events.push({
-      timestamp: Number(ballot.createdAtTimestamp),
+    timeline.push({
       type: "ballot",
+      timestamp: Number(ballot.createdAtTimestamp),
+      ballot,
     });
   }
   for (const fe of flowEvents) {
-    events.push({
-      timestamp: Number(fe.timestamp),
+    timeline.push({
       type: "flow",
-      flowRate: BigInt(fe.flowRate),
+      timestamp: Number(fe.timestamp),
       sender: fe.sender.toLowerCase(),
+      flowRate: BigInt(fe.flowRate),
     });
   }
-  events.sort((a, b) => a.timestamp - b.timestamp);
-  return events;
+  timeline.sort((a, b) => {
+    if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+    return TIMELINE_TYPE_ORDER[a.type] - TIMELINE_TYPE_ORDER[b.type];
+  });
+  return timeline;
 }
 
-export type RecipientRemovalMap = Map<string, number | null>;
+function sortedRemovalList(
+  recipientRemovalMap: RecipientRemovalMap,
+): Array<{ recipient: string; timestamp: number }> {
+  const list: Array<{ recipient: string; timestamp: number }> = [];
+  for (const [addr, ts] of recipientRemovalMap) {
+    if (ts != null) list.push({ recipient: addr, timestamp: ts });
+  }
+  list.sort((a, b) => a.timestamp - b.timestamp);
+  return list;
+}
 
-function computeCumulativeFundingAtTime(
-  ballots: SubgraphBallot[],
-  flowEvents: FlowUpdatedEvent[],
-  granteeAddresses: string[],
+type IncrementalState = {
+  voterAllocations: Map<string, Map<string, bigint>>;
+  recipientTotals: Map<string, bigint>;
+  grandTotal: bigint;
+  removedRecipients: Set<string>;
+  activeSenders: Map<string, bigint>;
+  totalPoolFlowRate: bigint;
+  allVoters: Set<string>;
+  // Prevents a duplicate (voter, timestamp) ballot pair from overwriting the
+  // first ballot's allocations. Matches the "earliest wins at same timestamp"
+  // semantic of the previous reconstruction-based algorithm.
+  voterLastAppliedTs: Map<string, number>;
+};
+
+function newState(): IncrementalState {
+  return {
+    voterAllocations: new Map(),
+    recipientTotals: new Map(),
+    grandTotal: 0n,
+    removedRecipients: new Set(),
+    activeSenders: new Map(),
+    totalPoolFlowRate: 0n,
+    allVoters: new Set(),
+    voterLastAppliedTs: new Map(),
+  };
+}
+
+function applyBallot(state: IncrementalState, ballot: SubgraphBallot): void {
+  if (ballot.votes.length === 0) return;
+  const voter = ballot.votes[0].votedBy.toLowerCase();
+  const ts = Number(ballot.createdAtTimestamp);
+  state.allVoters.add(voter);
+  if (state.voterLastAppliedTs.get(voter) === ts) return;
+  state.voterLastAppliedTs.set(voter, ts);
+
+  const oldAllocs = state.voterAllocations.get(voter);
+  if (oldAllocs) {
+    for (const [rec, amount] of oldAllocs) {
+      const newTotal = (state.recipientTotals.get(rec) ?? 0n) - amount;
+      if (newTotal <= 0n) state.recipientTotals.delete(rec);
+      else state.recipientTotals.set(rec, newTotal);
+      state.grandTotal -= amount;
+    }
+    state.voterAllocations.delete(voter);
+  }
+
+  const newAllocs = new Map<string, bigint>();
+  for (const vote of ballot.votes) {
+    const amount = BigInt(vote.amount);
+    if (amount <= 0n) continue;
+    const rec = vote.recipient.account.toLowerCase();
+    if (state.removedRecipients.has(rec)) continue;
+    newAllocs.set(rec, amount);
+    state.recipientTotals.set(
+      rec,
+      (state.recipientTotals.get(rec) ?? 0n) + amount,
+    );
+    state.grandTotal += amount;
+  }
+  if (newAllocs.size > 0) state.voterAllocations.set(voter, newAllocs);
+}
+
+function applyFlow(
+  state: IncrementalState,
+  sender: string,
+  flowRate: bigint,
+): void {
+  if (flowRate > 0n) state.activeSenders.set(sender, flowRate);
+  else state.activeSenders.delete(sender);
+  state.totalPoolFlowRate = 0n;
+  for (const rate of state.activeSenders.values()) {
+    state.totalPoolFlowRate += rate;
+  }
+}
+
+function advanceRemovals(
+  state: IncrementalState,
+  sortedRemovals: Array<{ recipient: string; timestamp: number }>,
+  cursor: { idx: number },
   upTo: number,
-  recipientRemovalMap: RecipientRemovalMap,
-): Map<string, number> {
-  const cumulativeByAddress = new Map<string, number>();
-  for (const addr of granteeAddresses) {
-    cumulativeByAddress.set(addr, 0);
-  }
-
-  const events = mergeEvents(ballots, flowEvents).filter(
-    (e) => e.timestamp <= upTo,
-  );
-  if (events.length === 0) return cumulativeByAddress;
-
-  let totalPoolFlowRate = 0n;
-  const activeSenders = new Map<string, bigint>();
-  let lastTimestamp = events[0].timestamp;
-
-  for (const event of events) {
-    const dt = event.timestamp - lastTimestamp;
-    if (dt > 0) {
-      const shares = computeVoteShares(
-        reconstructAllocationsAtTime(
-          ballots,
-          lastTimestamp,
-          recipientRemovalMap,
-        ),
-      );
-      const totalRate =
-        weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
-      for (const addr of granteeAddresses) {
-        const share = shares.get(addr) ?? 0;
-        const accrued = (totalRate * share * dt) / SECONDS_IN_MONTH;
-        cumulativeByAddress.set(
-          addr,
-          (cumulativeByAddress.get(addr) ?? 0) + accrued,
-        );
-      }
-    }
-
-    if (event.type === "flow" && event.sender && event.flowRate !== undefined) {
-      if (event.flowRate > 0n) activeSenders.set(event.sender, event.flowRate);
-      else activeSenders.delete(event.sender);
-      totalPoolFlowRate = 0n;
-      for (const rate of activeSenders.values()) totalPoolFlowRate += rate;
-    }
-
-    lastTimestamp = event.timestamp;
-  }
-
-  // Accumulate from last event to upTo
-  const dt = upTo - lastTimestamp;
-  if (dt > 0) {
-    const shares = computeVoteShares(
-      reconstructAllocationsAtTime(ballots, lastTimestamp, recipientRemovalMap),
-    );
-    const totalRate =
-      weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
-    for (const addr of granteeAddresses) {
-      const share = shares.get(addr) ?? 0;
-      const accrued = (totalRate * share * dt) / SECONDS_IN_MONTH;
-      cumulativeByAddress.set(
-        addr,
-        (cumulativeByAddress.get(addr) ?? 0) + accrued,
-      );
+): void {
+  while (
+    cursor.idx < sortedRemovals.length &&
+    sortedRemovals[cursor.idx].timestamp <= upTo
+  ) {
+    const { recipient } = sortedRemovals[cursor.idx];
+    cursor.idx++;
+    if (state.removedRecipients.has(recipient)) continue;
+    state.removedRecipients.add(recipient);
+    for (const [voter, allocs] of state.voterAllocations) {
+      const amount = allocs.get(recipient);
+      if (amount == null || amount <= 0n) continue;
+      allocs.delete(recipient);
+      state.grandTotal -= amount;
+      const newTotal = (state.recipientTotals.get(recipient) ?? 0n) - amount;
+      if (newTotal <= 0n) state.recipientTotals.delete(recipient);
+      else state.recipientTotals.set(recipient, newTotal);
+      if (allocs.size === 0) state.voterAllocations.delete(voter);
     }
   }
-
-  return cumulativeByAddress;
-}
-
-function reconstructAllocationsAtTime(
-  ballots: SubgraphBallot[],
-  timestamp: number,
-  recipientRemovalMap: RecipientRemovalMap,
-): Map<string, Map<string, bigint>> {
-  const allocations = new Map<string, Map<string, bigint>>();
-
-  const relevantBallots = ballots
-    .filter((b) => Number(b.createdAtTimestamp) <= timestamp)
-    .sort(
-      (a, b) => Number(b.createdAtTimestamp) - Number(a.createdAtTimestamp),
-    );
-
-  const seen = new Set<string>();
-  for (const ballot of relevantBallots) {
-    if (ballot.votes.length === 0) continue;
-    const voter = ballot.votes[0].votedBy.toLowerCase();
-    if (seen.has(voter)) continue;
-    seen.add(voter);
-
-    const voterAllocs = new Map<string, bigint>();
-    for (const vote of ballot.votes) {
-      const amount = BigInt(vote.amount);
-      if (amount > 0n) {
-        const addr = vote.recipient.account.toLowerCase();
-        const removalTs = recipientRemovalMap.get(addr);
-        if (removalTs != null && removalTs <= timestamp) continue;
-        voterAllocs.set(addr, amount);
-      }
-    }
-    if (voterAllocs.size > 0) {
-      allocations.set(voter, voterAllocs);
-    }
-  }
-
-  return allocations;
-}
-
-function computeVoteShares(
-  allocations: Map<string, Map<string, bigint>>,
-): Map<string, number> {
-  const recipientTotals = new Map<string, bigint>();
-  let grandTotal = 0n;
-
-  for (const voterAllocs of allocations.values()) {
-    for (const [recipient, amount] of voterAllocs) {
-      recipientTotals.set(
-        recipient,
-        (recipientTotals.get(recipient) ?? 0n) + amount,
-      );
-      grandTotal += amount;
-    }
-  }
-
-  const shares = new Map<string, number>();
-  if (grandTotal === 0n) return shares;
-
-  for (const [recipient, total] of recipientTotals) {
-    shares.set(recipient, Number(total) / Number(grandTotal));
-  }
-  return shares;
 }
 
 export function buildTimeSeries(
@@ -318,33 +321,29 @@ export function buildTimeSeries(
   granteeNames: string[],
   recipientRemovalMap: RecipientRemovalMap,
   nameMap: AddressNameMap,
-): {
-  fundingRateSeries: TimeSeriesPoint[];
-  cumulativeSeries: TimeSeriesPoint[];
-  fundersSeries: TimeSeriesPoint[];
-  votersSeries: TimeSeriesPoint[];
-  totalRateSeries: TimeSeriesPoint[];
-  totalCumulativeSeries: TimeSeriesPoint[];
-} {
-  const nameByAddress = new Map<string, string>();
-  for (const [addr, name] of nameMap) {
-    nameByAddress.set(addr, name);
-  }
+): TimeSeries {
+  const addressByName = new Map<string, string>();
+  for (const [addr, name] of nameMap) addressByName.set(name, addr);
 
-  const events = mergeEvents(ballots, flowEvents);
-  if (events.length === 0) {
-    return {
-      fundingRateSeries: [],
-      cumulativeSeries: [],
-      fundersSeries: [],
-      votersSeries: [],
-      totalRateSeries: [],
-      totalCumulativeSeries: [],
-    };
-  }
+  const timeline = buildTimeline(ballots, flowEvents);
+  const empty: TimeSeries = {
+    fundingRateSeries: [],
+    cumulativeSeries: [],
+    fundersSeries: [],
+    votersSeries: [],
+    totalRateSeries: [],
+    totalCumulativeSeries: [],
+  };
+  if (timeline.length === 0) return empty;
 
-  let totalPoolFlowRate = 0n;
-  const activeSenders = new Map<string, bigint>();
+  const sortedRemovals = sortedRemovalList(recipientRemovalMap);
+  const removalCursor = { idx: 0 };
+
+  const state = newState();
+
+  const cumulativeByGrantee = new Map<string, number>();
+  for (const name of granteeNames) cumulativeByGrantee.set(name, 0);
+  let totalCumulative = 0;
 
   const fundingRateSeries: TimeSeriesPoint[] = [];
   const cumulativeSeries: TimeSeriesPoint[] = [];
@@ -353,79 +352,49 @@ export function buildTimeSeries(
   const totalRateSeries: TimeSeriesPoint[] = [];
   const totalCumulativeSeries: TimeSeriesPoint[] = [];
 
-  const cumulativeByGrantee = new Map<string, number>();
-  for (const name of granteeNames) {
-    cumulativeByGrantee.set(name, 0);
-  }
-  const allVoters = new Set<string>();
-  const ballotsByTime = [...ballots].sort(
-    (a, b) => Number(a.createdAtTimestamp) - Number(b.createdAtTimestamp),
-  );
-  let ballotIdx = 0;
+  let lastTime = timeline[0].timestamp;
 
-  let totalCumulative = 0;
-  let lastTimestamp = events[0].timestamp;
-
-  for (const event of events) {
-    const dt = event.timestamp - lastTimestamp;
-
+  for (const evt of timeline) {
+    const dt = evt.timestamp - lastTime;
     if (dt > 0) {
-      const shares = computeVoteShares(
-        reconstructAllocationsAtTime(
-          ballots,
-          lastTimestamp,
-          recipientRemovalMap,
-        ),
-      );
       const totalRate =
-        weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
-
-      for (const name of granteeNames) {
-        const addr = [...nameByAddress.entries()].find(
-          ([, n]) => n === name,
-        )?.[0];
-        const share = addr ? (shares.get(addr) ?? 0) : 0;
-        const rateForGrantee = totalRate * share;
-        const accrued = (rateForGrantee * dt) / SECONDS_IN_MONTH;
-        cumulativeByGrantee.set(
-          name,
-          (cumulativeByGrantee.get(name) ?? 0) + accrued,
-        );
+        weiPerSecToPerMonth(state.totalPoolFlowRate) * GRANTEE_POOL_SHARE;
+      if (state.grandTotal > 0n && totalRate > 0) {
+        const gt = Number(state.grandTotal);
+        for (const name of granteeNames) {
+          const addr = addressByName.get(name);
+          if (!addr) continue;
+          const rt = state.recipientTotals.get(addr);
+          if (!rt) continue;
+          const share = Number(rt) / gt;
+          const accrued = (totalRate * share * dt) / SECONDS_IN_MONTH;
+          cumulativeByGrantee.set(
+            name,
+            (cumulativeByGrantee.get(name) ?? 0) + accrued,
+          );
+        }
       }
-      totalCumulative +=
-        (weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE * dt) /
-        SECONDS_IN_MONTH;
+      totalCumulative += (totalRate * dt) / SECONDS_IN_MONTH;
     }
 
-    if (event.type === "flow" && event.sender && event.flowRate !== undefined) {
-      if (event.flowRate > 0n) {
-        activeSenders.set(event.sender, event.flowRate);
-      } else {
-        activeSenders.delete(event.sender);
-      }
-      totalPoolFlowRate = 0n;
-      for (const rate of activeSenders.values()) {
-        totalPoolFlowRate += rate;
-      }
+    if (evt.type === "flow") {
+      applyFlow(state, evt.sender, evt.flowRate);
+    } else {
+      applyBallot(state, evt.ballot);
     }
+    advanceRemovals(state, sortedRemovals, removalCursor, evt.timestamp);
+    lastTime = evt.timestamp;
 
-    const shares = computeVoteShares(
-      reconstructAllocationsAtTime(
-        ballots,
-        event.timestamp,
-        recipientRemovalMap,
-      ),
-    );
     const totalRate =
-      weiPerSecToPerMonth(totalPoolFlowRate) * GRANTEE_POOL_SHARE;
+      weiPerSecToPerMonth(state.totalPoolFlowRate) * GRANTEE_POOL_SHARE;
+    const gt = state.grandTotal > 0n ? Number(state.grandTotal) : 0;
 
-    const ratePoint: TimeSeriesPoint = { timestamp: event.timestamp };
-    const cumPoint: TimeSeriesPoint = { timestamp: event.timestamp };
+    const ratePoint: TimeSeriesPoint = { timestamp: evt.timestamp };
+    const cumPoint: TimeSeriesPoint = { timestamp: evt.timestamp };
     for (const name of granteeNames) {
-      const addr = [...nameByAddress.entries()].find(
-        ([, n]) => n === name,
-      )?.[0];
-      const share = addr ? (shares.get(addr) ?? 0) : 0;
+      const addr = addressByName.get(name);
+      const rt = addr ? state.recipientTotals.get(addr) : undefined;
+      const share = rt && gt > 0 ? Number(rt) / gt : 0;
       ratePoint[name] = totalRate * share;
       cumPoint[name] = cumulativeByGrantee.get(name) ?? 0;
     }
@@ -433,37 +402,18 @@ export function buildTimeSeries(
     cumulativeSeries.push(cumPoint);
 
     fundersSeries.push({
-      timestamp: event.timestamp,
-      funders: activeSenders.size,
+      timestamp: evt.timestamp,
+      funders: state.activeSenders.size,
     });
-
-    while (
-      ballotIdx < ballotsByTime.length &&
-      Number(ballotsByTime[ballotIdx].createdAtTimestamp) <= event.timestamp
-    ) {
-      const b = ballotsByTime[ballotIdx];
-      if (b.votes.length > 0) {
-        allVoters.add(b.votes[0].votedBy.toLowerCase());
-      }
-      ballotIdx++;
-    }
-
     votersSeries.push({
-      timestamp: event.timestamp,
-      voters: allVoters.size,
+      timestamp: evt.timestamp,
+      voters: state.allVoters.size,
     });
-
-    totalRateSeries.push({
-      timestamp: event.timestamp,
-      totalRate,
-    });
-
+    totalRateSeries.push({ timestamp: evt.timestamp, totalRate });
     totalCumulativeSeries.push({
-      timestamp: event.timestamp,
+      timestamp: evt.timestamp,
       totalCumulative,
     });
-
-    lastTimestamp = event.timestamp;
   }
 
   return {
@@ -483,38 +433,106 @@ export function buildProjectEpochData(
   recipientRemovalMap: RecipientRemovalMap,
 ): Map<string, ProjectEpochData[]> {
   const result = new Map<string, ProjectEpochData[]>();
-
   const granteeAddresses = [...nameMap.keys()];
-  const addressToName = nameMap;
   const now = Math.floor(Date.now() / 1000);
+  const epochEnds = EPOCHS.map((e) => (e.end <= now ? e.end : now));
 
-  // Compute cumulative funding at each epoch boundary for all grantees
-  const cumulativeAtEpochEnd: Map<string, number>[] = [];
-  for (const epoch of EPOCHS) {
-    const epochEnd = epoch.end <= now ? epoch.end : now;
-    cumulativeAtEpochEnd.push(
-      computeCumulativeFundingAtTime(
-        ballots,
-        flowEvents,
-        granteeAddresses,
-        epochEnd,
-        recipientRemovalMap,
-      ),
-    );
+  const timeline = buildTimeline(ballots, flowEvents);
+  const sortedRemovals = sortedRemovalList(recipientRemovalMap);
+  const removalCursor = { idx: 0 };
+
+  const state = newState();
+  const cumulativeByAddress = new Map<string, number>();
+  for (const addr of granteeAddresses) cumulativeByAddress.set(addr, 0);
+
+  const cumulativeAtEnds: Map<string, number>[] = [];
+  const allocsAtEnds: Map<string, Map<string, bigint>>[] = [];
+
+  function accrueDt(dt: number): void {
+    if (dt <= 0) return;
+    const totalRate =
+      weiPerSecToPerMonth(state.totalPoolFlowRate) * GRANTEE_POOL_SHARE;
+    if (state.grandTotal <= 0n || totalRate === 0) return;
+    const gt = Number(state.grandTotal);
+    for (const addr of granteeAddresses) {
+      const rt = state.recipientTotals.get(addr);
+      if (!rt) continue;
+      const share = Number(rt) / gt;
+      const accrued = (totalRate * share * dt) / SECONDS_IN_MONTH;
+      cumulativeByAddress.set(
+        addr,
+        (cumulativeByAddress.get(addr) ?? 0) + accrued,
+      );
+    }
+  }
+
+  function cloneAllocations(): Map<string, Map<string, bigint>> {
+    const copy = new Map<string, Map<string, bigint>>();
+    for (const [voter, allocs] of state.voterAllocations) {
+      copy.set(voter, new Map(allocs));
+    }
+    return copy;
+  }
+
+  function snapshot(): void {
+    cumulativeAtEnds.push(new Map(cumulativeByAddress));
+    allocsAtEnds.push(cloneAllocations());
+  }
+
+  let lastTime = timeline.length > 0 ? timeline[0].timestamp : 0;
+  let epochPtr = 0;
+
+  for (const evt of timeline) {
+    while (epochPtr < epochEnds.length && epochEnds[epochPtr] < evt.timestamp) {
+      const epochEnd = epochEnds[epochPtr];
+      const dt = epochEnd - lastTime;
+      if (dt > 0) {
+        accrueDt(dt);
+        lastTime = epochEnd;
+      }
+      advanceRemovals(state, sortedRemovals, removalCursor, epochEnd);
+      snapshot();
+      epochPtr++;
+    }
+
+    const dt = evt.timestamp - lastTime;
+    if (dt > 0) accrueDt(dt);
+
+    if (evt.type === "flow") {
+      applyFlow(state, evt.sender, evt.flowRate);
+    } else {
+      applyBallot(state, evt.ballot);
+    }
+    advanceRemovals(state, sortedRemovals, removalCursor, evt.timestamp);
+    lastTime = evt.timestamp;
+
+    while (
+      epochPtr < epochEnds.length &&
+      epochEnds[epochPtr] === evt.timestamp
+    ) {
+      snapshot();
+      epochPtr++;
+    }
+  }
+
+  while (epochPtr < epochEnds.length) {
+    const epochEnd = epochEnds[epochPtr];
+    const dt = epochEnd - lastTime;
+    if (dt > 0) {
+      accrueDt(dt);
+      lastTime = epochEnd;
+    }
+    advanceRemovals(state, sortedRemovals, removalCursor, epochEnd);
+    snapshot();
+    epochPtr++;
   }
 
   for (const addr of granteeAddresses) {
-    const name = addressToName.get(addr) ?? addr;
+    const name = nameMap.get(addr) ?? addr;
     const epochData: ProjectEpochData[] = [];
 
     for (let i = 0; i < EPOCHS.length; i++) {
-      const epoch = EPOCHS[i];
-      const allocations = reconstructAllocationsAtTime(
-        ballots,
-        epoch.end,
-        recipientRemovalMap,
-      );
-
+      const allocations = allocsAtEnds[i];
       let totalVotes = 0n;
       let mentorVotes = 0n;
       let communityVotes = 0n;
@@ -534,14 +552,13 @@ export function buildProjectEpochData(
       }
 
       const totalForPct = Number(totalVotes) || 1;
-
-      const cumulativeFunding = cumulativeAtEpochEnd[i].get(addr) ?? 0;
+      const cumulativeFunding = cumulativeAtEnds[i].get(addr) ?? 0;
       const prevCumulative =
-        i > 0 ? (cumulativeAtEpochEnd[i - 1].get(addr) ?? 0) : 0;
+        i > 0 ? (cumulativeAtEnds[i - 1].get(addr) ?? 0) : 0;
       const fundingAccrued = cumulativeFunding - prevCumulative;
 
       epochData.push({
-        epoch: epoch.number,
+        epoch: EPOCHS[i].number,
         votes: totalVotes,
         mentorPct:
           totalVotes > 0n ? (Number(mentorVotes) / totalForPct) * 100 : 0,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Table, Form, Badge, Pagination, Stack } from "react-bootstrap";
 import { VotingEventRow } from "@/types";
 import { VoterType, MENTOR_NAMES } from "@/lib/constants";
@@ -46,15 +46,12 @@ export default function VotingEventsTable({
       result = result.filter((r) => r.granteeName === granteeFilter);
     }
 
-    onFilteredRowsChange(result);
     return result;
-  }, [
-    rows,
-    addressFilter,
-    voterTypeFilter,
-    granteeFilter,
-    onFilteredRowsChange,
-  ]);
+  }, [rows, addressFilter, voterTypeFilter, granteeFilter]);
+
+  useEffect(() => {
+    onFilteredRowsChange(filtered);
+  }, [filtered, onFilteredRowsChange]);
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
