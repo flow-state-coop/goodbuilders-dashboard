@@ -1,42 +1,27 @@
 "use client";
 
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useState,
-  useTransition,
-} from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Container, Spinner, Stack, Tab, Tabs } from "react-bootstrap";
 import {
   SubgraphBallot,
   FlowUpdatedEvent,
   PoolData,
   ApplicationData,
-  VotingEventRow,
   ProjectEpochData,
-  MentorVoterData,
   SubgraphRecipient,
 } from "@/types";
 import {
   buildAddressNameMap,
-  processVotingEvents,
   processStreamPeriods,
   buildTimeSeries,
   buildProjectEpochData,
-  buildMentorBallotData,
-  MentorData,
   RecipientRemovalMap,
   TimeSeries,
 } from "@/lib/dataProcessing";
 import { weiPerSecToPerMonth } from "@/lib/utils";
-import VotingEventsTable from "./VotingEventsTable";
-import VotingStats from "./VotingStats";
 import FundingEventsTable from "./FundingEventsTable";
 import HistoricalCharts from "./HistoricalCharts";
 import ProjectTables from "./ProjectTables";
-import MentorBreakdown from "./MentorBreakdown";
 import GranteeFundingSummary from "./GranteeFundingSummary";
 
 function TabLoading() {
@@ -52,14 +37,12 @@ export default function DashboardClient({
   flowEvents,
   pool,
   applications,
-  mentorVoters,
   recipients,
 }: {
   ballots: SubgraphBallot[];
   flowEvents: FlowUpdatedEvent[];
   pool: PoolData;
   applications: ApplicationData[];
-  mentorVoters: MentorVoterData[];
   recipients: SubgraphRecipient[];
 }) {
   const nameMap = useMemo(
@@ -101,19 +84,16 @@ export default function DashboardClient({
     return map;
   }, [recipients]);
 
-  const { activeGranteeNames, granteeStatuses } = useMemo(() => {
-    const active = new Set<string>();
+  const granteeStatuses = useMemo(() => {
     const statuses = new Map<string, string>();
     for (const app of applications) {
       const addr = app.funding_address.toLowerCase();
       const removalTs = recipientRemovalMap.get(addr);
-      if (removalTs != null) {
-        if (app.project_name) statuses.set(app.project_name, app.status);
-      } else if (app.project_name) {
-        active.add(app.project_name);
+      if (removalTs != null && app.project_name) {
+        statuses.set(app.project_name, app.status);
       }
     }
-    return { activeGranteeNames: active, granteeStatuses: statuses };
+    return statuses;
   }, [applications, recipientRemovalMap]);
 
   const granteeNames = useMemo(() => {
@@ -129,11 +109,6 @@ export default function DashboardClient({
     return [...namesWithVotes].sort();
   }, [ballots, nameMap]);
 
-  const votingEvents = useMemo(
-    () => processVotingEvents(ballots, nameMap, recipientRemovalMap),
-    [ballots, nameMap, recipientRemovalMap],
-  );
-
   const fundingPeriods = useMemo(
     () => processStreamPeriods(flowEvents),
     [flowEvents],
@@ -144,7 +119,6 @@ export default function DashboardClient({
     string,
     ProjectEpochData[]
   > | null>(null);
-  const [mentorData, setMentorData] = useState<MentorData[] | null>(null);
   const [, startDerivedTransition] = useTransition();
 
   useEffect(() => {
@@ -169,17 +143,10 @@ export default function DashboardClient({
       for (const [name, epochs] of allEpochData) {
         if (granteeSet.has(name)) filteredEpochData.set(name, epochs);
       }
-      const mentors = buildMentorBallotData(
-        ballots,
-        nameMap,
-        mentorVoters,
-        activeGranteeNames,
-      );
       if (cancelled) return;
       startDerivedTransition(() => {
         setTimeSeries(ts);
         setProjectEpochData(filteredEpochData);
-        setMentorData(mentors);
       });
     };
     let idleHandle: number | null = null;
@@ -194,24 +161,7 @@ export default function DashboardClient({
       if (idleHandle !== null) window.cancelIdleCallback(idleHandle);
       if (timeoutHandle !== null) clearTimeout(timeoutHandle);
     };
-  }, [
-    ballots,
-    flowEvents,
-    granteeNames,
-    recipientRemovalMap,
-    nameMap,
-    mentorVoters,
-    activeGranteeNames,
-  ]);
-
-  const [filteredVotingRows, setFilteredVotingRows] =
-    useState<VotingEventRow[]>(votingEvents);
-
-  const handleFilteredRowsChange = useCallback((rows: VotingEventRow[]) => {
-    setFilteredVotingRows(rows);
-  }, []);
-
-  const deferredFilteredRows = useDeferredValue(filteredVotingRows);
+  }, [ballots, flowEvents, granteeNames, recipientRemovalMap, nameMap]);
 
   return (
     <Container fluid className="py-4 px-3 px-md-5">
@@ -233,21 +183,7 @@ export default function DashboardClient({
         </div>
       </div>
 
-      <Tabs defaultActiveKey="voting" className="mb-4" mountOnEnter>
-        <Tab eventKey="voting" title="Voting">
-          <Stack gap={4}>
-            <VotingStats
-              rows={deferredFilteredRows}
-              activeGranteeNames={activeGranteeNames}
-            />
-            <VotingEventsTable
-              rows={votingEvents}
-              granteeNames={granteeNames}
-              onFilteredRowsChange={handleFilteredRowsChange}
-            />
-          </Stack>
-        </Tab>
-
+      <Tabs defaultActiveKey="funding" className="mb-4" mountOnEnter>
         <Tab eventKey="funding" title="Funding">
           {timeSeries ? (
             <Stack gap={4}>
@@ -259,14 +195,6 @@ export default function DashboardClient({
               />
               <FundingEventsTable rows={fundingPeriods} />
             </Stack>
-          ) : (
-            <TabLoading />
-          )}
-        </Tab>
-
-        <Tab eventKey="mentors" title="Mentors">
-          {mentorData ? (
-            <MentorBreakdown mentors={mentorData} />
           ) : (
             <TabLoading />
           )}

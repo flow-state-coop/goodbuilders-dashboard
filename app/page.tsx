@@ -6,13 +6,11 @@ import {
   DISTRIBUTION_POOL,
   SUPER_APP,
   CHAIN_ID,
-  MENTOR_NAMES,
 } from "@/lib/constants";
 import {
   ALL_BALLOTS_QUERY,
   FLOW_UPDATED_EVENTS_QUERY,
   DISTRIBUTION_POOL_QUERY,
-  MENTOR_VOTERS_QUERY,
   RECIPIENTS_QUERY,
 } from "@/lib/queries";
 import {
@@ -20,7 +18,6 @@ import {
   FlowUpdatedEvent,
   PoolData,
   ApplicationData,
-  MentorVoterData,
   SubgraphRecipient,
 } from "@/types";
 import DashboardClient from "@/components/DashboardClient";
@@ -72,16 +69,6 @@ async function fetchPool(): Promise<PoolData> {
   return data.pool;
 }
 
-async function fetchMentorVoters(): Promise<MentorVoterData[]> {
-  const accounts = Object.keys(MENTOR_NAMES);
-  const data = await request<{ voters: MentorVoterData[] }>(
-    FLOW_COUNCIL_SUBGRAPH,
-    MENTOR_VOTERS_QUERY,
-    { councilId: COUNCIL_ADDRESS, accounts },
-  );
-  return data.voters;
-}
-
 async function fetchRecipients(): Promise<SubgraphRecipient[]> {
   const data = await request<{ recipients: SubgraphRecipient[] }>(
     FLOW_COUNCIL_SUBGRAPH,
@@ -104,13 +91,12 @@ async function fetchApplications(): Promise<ApplicationData[]> {
 export const revalidate = 60;
 
 export default async function Page() {
-  const [ballots, flowEvents, pool, applications, mentorVoters, recipients] =
+  const [ballots, flowEvents, pool, applications, recipients] =
     await Promise.all([
       fetchAllBallots(),
       fetchFlowEvents(),
       fetchPool(),
       fetchApplications(),
-      fetchMentorVoters(),
       fetchRecipients(),
     ]);
 
@@ -120,7 +106,6 @@ export default async function Page() {
       flowEvents={flowEvents}
       pool={pool}
       applications={applications}
-      mentorVoters={mentorVoters}
       recipients={recipients}
     />
   );
