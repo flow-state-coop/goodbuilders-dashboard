@@ -48,10 +48,10 @@ export default function ProjectTables({
     epochDurations.set(e.number, end - start);
   }
 
-  const REMOVED_PROJECT_ORDER = ["bitsave", "drip"];
+  const REMOVED_PROJECT_PREFIXES = ["bitsave", "drip"];
   const removedRank = (name: string) => {
-    const idx = REMOVED_PROJECT_ORDER.indexOf(name.toLowerCase());
-    return idx === -1 ? -1 : idx;
+    const lower = name.trim().toLowerCase();
+    return REMOVED_PROJECT_PREFIXES.findIndex((p) => lower.startsWith(p));
   };
   const entries = [...data.entries()].sort(([a], [b]) => {
     const ra = removedRank(a);
