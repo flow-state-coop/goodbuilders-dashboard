@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Table, Form, Badge, Pagination, Stack } from "react-bootstrap";
 import { VotingEventRow } from "@/types";
-import { VoterType, MENTOR_NAMES } from "@/lib/constants";
 import { formatTimestamp, shortenAddress } from "@/lib/utils";
 
 type SortField = keyof VotingEventRow;
@@ -14,16 +13,22 @@ const PAGE_SIZE = 25;
 export default function VotingEventsTable({
   rows,
   granteeNames,
+  voterGroupLabels,
+  groupColorMap,
+  profileNames,
   onFilteredRowsChange,
 }: {
   rows: VotingEventRow[];
   granteeNames: string[];
+  voterGroupLabels: string[];
+  groupColorMap: Record<string, string>;
+  profileNames: Record<string, string>;
   onFilteredRowsChange: (rows: VotingEventRow[]) => void;
 }) {
   const [sortField, setSortField] = useState<SortField>("submissionTimestamp");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [addressFilter, setAddressFilter] = useState("");
-  const [voterTypeFilter, setVoterTypeFilter] = useState<VoterType | "">("");
+  const [voterTypeFilter, setVoterTypeFilter] = useState<string>("");
   const [granteeFilter, setGranteeFilter] = useState("");
   const [page, setPage] = useState(1);
 
@@ -35,7 +40,7 @@ export default function VotingEventsTable({
       result = result.filter(
         (r) =>
           r.voterAddress.includes(lower) ||
-          (MENTOR_NAMES[r.voterAddress]?.toLowerCase().includes(lower) ??
+          (profileNames[r.voterAddress]?.toLowerCase().includes(lower) ??
             false),
       );
     }
@@ -112,15 +117,17 @@ export default function VotingEventsTable({
           size="sm"
           value={voterTypeFilter}
           onChange={(e) => {
-            setVoterTypeFilter(e.target.value as VoterType | "");
+            setVoterTypeFilter(e.target.value);
             setPage(1);
           }}
           style={{ maxWidth: 160 }}
         >
           <option value="">All Voter Types</option>
-          <option value="Mentor">Mentor</option>
-          <option value="Metrics">Metrics</option>
-          <option value="Community">Community</option>
+          {voterGroupLabels.map((label) => (
+            <option key={label} value={label}>
+              {label}
+            </option>
+          ))}
         </Form.Select>
         <Form.Select
           size="sm"
@@ -178,7 +185,7 @@ export default function VotingEventsTable({
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    {MENTOR_NAMES[row.voterAddress] ??
+                    {profileNames[row.voterAddress] ??
                       shortenAddress(row.voterAddress)}
                   </a>
                 </td>
@@ -186,11 +193,7 @@ export default function VotingEventsTable({
                   <Badge
                     style={{
                       backgroundColor:
-                        row.voterType === "Mentor"
-                          ? "#056589"
-                          : row.voterType === "Metrics"
-                            ? "#d4890a"
-                            : "#3c655b",
+                        groupColorMap[row.voterType] ?? "#6c757d",
                     }}
                     bg=""
                   >

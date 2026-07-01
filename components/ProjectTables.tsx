@@ -3,7 +3,8 @@
 import { Badge, Card, Col, Row, Table } from "react-bootstrap";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { ProjectEpochData } from "@/types";
-import { EPOCHS, SECONDS_IN_MONTH, VOTER_TYPE_COLORS } from "@/lib/constants";
+import { SECONDS_IN_MONTH } from "@/lib/constants";
+import { EpochConfig } from "@/lib/seasons";
 import { formatGDollar } from "@/lib/utils";
 
 const STATUS_BADGE_STYLES: Record<string, { label: string; bg: string }> = {
@@ -30,18 +31,24 @@ function EpochCell({
 export default function ProjectTables({
   data,
   granteeStatuses,
+  epochs,
+  voterGroupLabels,
+  groupColorMap,
 }: {
   data: Map<string, ProjectEpochData[]>;
   granteeStatuses: Map<string, string>;
+  epochs: EpochConfig[];
+  voterGroupLabels: string[];
+  groupColorMap: Record<string, string>;
 }) {
   const now = Math.floor(Date.now() / 1000);
   const activeEpochNumbers = new Set(
-    EPOCHS.filter((e) => e.start <= now).map((e) => e.number),
+    epochs.filter((e) => e.start <= now).map((e) => e.number),
   );
-  const currentEpoch = EPOCHS.find((e) => e.start <= now && e.end > now);
+  const currentEpoch = epochs.find((e) => e.start <= now && e.end > now);
 
   const epochDurations = new Map<number, number>();
-  for (const e of EPOCHS) {
+  for (const e of epochs) {
     if (!activeEpochNumbers.has(e.number)) continue;
     const start = e.start || e.end - 14 * 24 * 60 * 60;
     const end = e.end <= now ? e.end : now;
@@ -52,19 +59,20 @@ export default function ProjectTables({
 
   return (
     <Row xs={1} lg={2} className="g-4">
-      {entries.map(([name, epochs]) => {
-        const latestActive = [...epochs]
+      {entries.map(([name, epochRows]) => {
+        const latestActive = [...epochRows]
           .reverse()
           .find((ed) => activeEpochNumbers.has(ed.epoch) && ed.votes > 0n);
         const pieData = latestActive
-          ? [
-              { name: "Mentor", value: latestActive.mentorPct },
-              { name: "Community", value: latestActive.communityPct },
-              { name: "Metrics", value: latestActive.metricsPct },
-            ].filter((d) => d.value > 0)
+          ? voterGroupLabels
+              .map((label) => ({
+                name: label,
+                value: latestActive.groupPct[label] ?? 0,
+              }))
+              .filter((d) => d.value > 0)
           : [];
 
-        const epochMap = new Map(epochs.map((ed) => [ed.epoch, ed]));
+        const epochMap = new Map(epochRows.map((ed) => [ed.epoch, ed]));
 
         return (
           <Col key={name}>
@@ -97,7 +105,7 @@ export default function ProjectTables({
                     <thead>
                       <tr>
                         <th></th>
-                        {EPOCHS.map((e) => (
+                        {epochs.map((e) => (
                           <th
                             key={e.number}
                             className="text-center"
@@ -126,7 +134,7 @@ export default function ProjectTables({
                     <tbody>
                       <tr>
                         <td className="fw-bold">Votes</td>
-                        {EPOCHS.map((e) => {
+                        {epochs.map((e) => {
                           const ed = epochMap.get(e.number);
                           const active =
                             !!ed && activeEpochNumbers.has(e.number);
@@ -141,60 +149,28 @@ export default function ProjectTables({
                           );
                         })}
                       </tr>
-                      <tr>
-                        <td className="fw-bold">% Mentors</td>
-                        {EPOCHS.map((e) => {
-                          const ed = epochMap.get(e.number);
-                          const active =
-                            !!ed && activeEpochNumbers.has(e.number);
-                          return (
-                            <EpochCell
-                              key={e.number}
-                              epochNum={e.number}
-                              active={active}
-                            >
-                              {ed?.mentorPct.toFixed(1)}%
-                            </EpochCell>
-                          );
-                        })}
-                      </tr>
-                      <tr>
-                        <td className="fw-bold">% Community</td>
-                        {EPOCHS.map((e) => {
-                          const ed = epochMap.get(e.number);
-                          const active =
-                            !!ed && activeEpochNumbers.has(e.number);
-                          return (
-                            <EpochCell
-                              key={e.number}
-                              epochNum={e.number}
-                              active={active}
-                            >
-                              {ed?.communityPct.toFixed(1)}%
-                            </EpochCell>
-                          );
-                        })}
-                      </tr>
-                      <tr>
-                        <td className="fw-bold">% Metrics</td>
-                        {EPOCHS.map((e) => {
-                          const ed = epochMap.get(e.number);
-                          const active =
-                            !!ed && activeEpochNumbers.has(e.number);
-                          return (
-                            <EpochCell
-                              key={e.number}
-                              epochNum={e.number}
-                              active={active}
-                            >
-                              {ed?.metricsPct.toFixed(1)}%
-                            </EpochCell>
-                          );
-                        })}
-                      </tr>
+                      {voterGroupLabels.map((label) => (
+                        <tr key={label}>
+                          <td className="fw-bold">% {label}</td>
+                          {epochs.map((e) => {
+                            const ed = epochMap.get(e.number);
+                            const active =
+                              !!ed && activeEpochNumbers.has(e.number);
+                            return (
+                              <EpochCell
+                                key={e.number}
+                                epochNum={e.number}
+                                active={active}
+                              >
+                                {(ed?.groupPct[label] ?? 0).toFixed(1)}%
+                              </EpochCell>
+                            );
+                          })}
+                        </tr>
+                      ))}
                       <tr>
                         <td className="fw-bold">Unique Voters</td>
-                        {EPOCHS.map((e) => {
+                        {epochs.map((e) => {
                           const ed = epochMap.get(e.number);
                           const active =
                             !!ed && activeEpochNumbers.has(e.number);
@@ -211,7 +187,7 @@ export default function ProjectTables({
                       </tr>
                       <tr>
                         <td className="fw-bold">Avg Rate (G$/mo)</td>
-                        {EPOCHS.map((e) => {
+                        {epochs.map((e) => {
                           const ed = epochMap.get(e.number);
                           const active =
                             !!ed && activeEpochNumbers.has(e.number);
@@ -232,7 +208,7 @@ export default function ProjectTables({
                       </tr>
                       <tr>
                         <td className="fw-bold">Epoch Funding (G$)</td>
-                        {EPOCHS.map((e) => {
+                        {epochs.map((e) => {
                           const ed = epochMap.get(e.number);
                           const active =
                             !!ed && activeEpochNumbers.has(e.number);
@@ -249,7 +225,7 @@ export default function ProjectTables({
                       </tr>
                       <tr>
                         <td className="fw-bold">Cumulative (G$)</td>
-                        {EPOCHS.map((e) => {
+                        {epochs.map((e) => {
                           const ed = epochMap.get(e.number);
                           const active =
                             !!ed && activeEpochNumbers.has(e.number);
@@ -285,11 +261,7 @@ export default function ProjectTables({
                         {pieData.map((entry) => (
                           <Cell
                             key={entry.name}
-                            fill={
-                              VOTER_TYPE_COLORS[
-                                entry.name as keyof typeof VOTER_TYPE_COLORS
-                              ]
-                            }
+                            fill={groupColorMap[entry.name] ?? "#6c757d"}
                           />
                         ))}
                       </Pie>

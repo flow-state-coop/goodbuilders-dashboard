@@ -10,9 +10,8 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: "GoodBuilders S3 — Flow Council Dashboard",
-  description:
-    "Stats dashboard for the GoodBuilders Season 3 Flow Council on Celo",
+  title: "GoodBuilders Flow Council Dashboard",
+  description: "Stats dashboard for GoodBuilders Flow Council rounds on Celo",
 };
 
 export default function RootLayout({

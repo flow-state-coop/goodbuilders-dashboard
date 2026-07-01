@@ -4,38 +4,38 @@ import { memo, useMemo } from "react";
 import { Card, Stack } from "react-bootstrap";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { VotingEventRow } from "@/types";
-import { VoterType, VOTER_TYPE_COLORS } from "@/lib/constants";
 
 function VotingStats({
   rows,
   activeGranteeNames,
+  groupColorMap,
 }: {
   rows: VotingEventRow[];
   activeGranteeNames: Set<string>;
+  groupColorMap: Record<string, string>;
 }) {
   const stats = useMemo(() => {
     const voters = new Set<string>();
-    const byType: Record<VoterType, bigint> = {
-      Mentor: 0n,
-      Metrics: 0n,
-      Community: 0n,
-    };
+    const byType = new Map<string, bigint>();
     let totalVotes = 0n;
 
     for (const row of rows) {
       if (row.replacedTimestamp !== null) continue;
       if (!activeGranteeNames.has(row.granteeName)) continue;
       voters.add(row.voterAddress);
-      byType[row.voterType] += row.totalVotes;
+      byType.set(
+        row.voterType,
+        (byType.get(row.voterType) ?? 0n) + row.totalVotes,
+      );
       totalVotes += row.totalVotes;
     }
 
-    const pieData = (Object.entries(byType) as [VoterType, bigint][])
+    const pieData = [...byType.entries()]
       .filter(([, amount]) => amount > 0n)
       .map(([type, amount]) => ({
         name: type,
         value: Number(amount),
-        color: VOTER_TYPE_COLORS[type],
+        color: groupColorMap[type] ?? "#6c757d",
       }));
 
     return {
@@ -43,7 +43,7 @@ function VotingStats({
       uniqueVoters: voters.size,
       pieData,
     };
-  }, [rows]);
+  }, [rows, activeGranteeNames, groupColorMap]);
 
   return (
     <Stack
