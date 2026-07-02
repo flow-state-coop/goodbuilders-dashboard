@@ -1,13 +1,10 @@
 import {
   categorizeVoter,
-  EPOCHS,
   GRANTEE_POOL_SHARE,
   SECONDS_IN_MONTH,
-  MENTOR_VOTERS,
-  MENTOR_NAMES,
-  MENTOR_EPOCH_VOTING_POWER,
 } from "./constants";
-import { weiPerSecToPerMonth } from "./utils";
+import { EpochConfig } from "./seasons";
+import { weiPerSecToPerMonth, shortenAddress } from "./utils";
 import {
   SubgraphBallot,
   FlowUpdatedEvent,
@@ -16,10 +13,13 @@ import {
   TimeSeriesPoint,
   ProjectEpochData,
   ApplicationData,
-  MentorVoterData,
+  CouncilVoterData,
+  ProfileNameMap,
 } from "@/types";
 
 type AddressNameMap = Map<string, string>;
+
+export type VoterGroupMap = Map<string, string>;
 
 export type RecipientRemovalMap = Map<string, number | null>;
 
@@ -47,7 +47,8 @@ export function buildAddressNameMap(
 export function processVotingEvents(
   ballots: SubgraphBallot[],
   nameMap: AddressNameMap,
-  recipientRemovalMap: RecipientRemovalMap,
+  voterGroupMap: VoterGroupMap,
+  recipientRemovalMap: RecipientRemovalMap = new Map(),
 ): VotingEventRow[] {
   const rows: VotingEventRow[] = [];
 
@@ -61,7 +62,7 @@ export function processVotingEvents(
       const granteeAddress = vote.recipient.account.toLowerCase();
       rows.push({
         voterAddress,
-        voterType: categorizeVoter(voterAddress),
+        voterType: categorizeVoter(voterAddress, voterGroupMap),
         granteeName: nameMap.get(granteeAddress) ?? granteeAddress,
         granteeAddress,
         totalVotes: BigInt(vote.amount),
@@ -319,8 +320,8 @@ export function buildTimeSeries(
   ballots: SubgraphBallot[],
   flowEvents: FlowUpdatedEvent[],
   granteeNames: string[],
-  recipientRemovalMap: RecipientRemovalMap,
   nameMap: AddressNameMap,
+  recipientRemovalMap: RecipientRemovalMap = new Map(),
 ): TimeSeries {
   const addressByName = new Map<string, string>();
   for (const [addr, name] of nameMap) addressByName.set(name, addr);
@@ -430,12 +431,14 @@ export function buildProjectEpochData(
   ballots: SubgraphBallot[],
   flowEvents: FlowUpdatedEvent[],
   nameMap: AddressNameMap,
-  recipientRemovalMap: RecipientRemovalMap,
+  voterGroupMap: VoterGroupMap,
+  epochs: EpochConfig[],
+  recipientRemovalMap: RecipientRemovalMap = new Map(),
 ): Map<string, ProjectEpochData[]> {
   const result = new Map<string, ProjectEpochData[]>();
   const granteeAddresses = [...nameMap.keys()];
   const now = Math.floor(Date.now() / 1000);
-  const epochEnds = EPOCHS.map((e) => (e.end <= now ? e.end : now));
+  const epochEnds = epochs.map((e) => (e.end <= now ? e.end : now));
 
   const timeline = buildTimeline(ballots, flowEvents);
   const sortedRemovals = sortedRemovalList(recipientRemovalMap);
@@ -531,12 +534,10 @@ export function buildProjectEpochData(
     const name = nameMap.get(addr) ?? addr;
     const epochData: ProjectEpochData[] = [];
 
-    for (let i = 0; i < EPOCHS.length; i++) {
+    for (let i = 0; i < epochs.length; i++) {
       const allocations = allocsAtEnds[i];
       let totalVotes = 0n;
-      let mentorVotes = 0n;
-      let communityVotes = 0n;
-      let metricsVotes = 0n;
+      const groupVotes = new Map<string, bigint>();
       const uniqueVoters = new Set<string>();
 
       for (const [voter, voterAllocs] of allocations) {
@@ -544,28 +545,28 @@ export function buildProjectEpochData(
         if (amount && amount > 0n) {
           totalVotes += amount;
           uniqueVoters.add(voter);
-          const type = categorizeVoter(voter);
-          if (type === "Mentor") mentorVotes += amount;
-          else if (type === "Metrics") metricsVotes += amount;
-          else communityVotes += amount;
+          const label = categorizeVoter(voter, voterGroupMap);
+          groupVotes.set(label, (groupVotes.get(label) ?? 0n) + amount);
         }
       }
 
-      const totalForPct = Number(totalVotes) || 1;
+      const groupPct: Record<string, number> = {};
+      if (totalVotes > 0n) {
+        const total = Number(totalVotes);
+        for (const [label, amount] of groupVotes) {
+          groupPct[label] = (Number(amount) / total) * 100;
+        }
+      }
+
       const cumulativeFunding = cumulativeAtEnds[i].get(addr) ?? 0;
       const prevCumulative =
         i > 0 ? (cumulativeAtEnds[i - 1].get(addr) ?? 0) : 0;
       const fundingAccrued = cumulativeFunding - prevCumulative;
 
       epochData.push({
-        epoch: EPOCHS[i].number,
+        epoch: epochs[i].number,
         votes: totalVotes,
-        mentorPct:
-          totalVotes > 0n ? (Number(mentorVotes) / totalForPct) * 100 : 0,
-        communityPct:
-          totalVotes > 0n ? (Number(communityVotes) / totalForPct) * 100 : 0,
-        metricsPct:
-          totalVotes > 0n ? (Number(metricsVotes) / totalForPct) * 100 : 0,
+        groupPct,
         uniqueVoters: uniqueVoters.size,
         fundingAccrued,
         cumulativeFunding,
@@ -600,29 +601,41 @@ export type MentorData = {
   ballots: MentorBallot[];
 };
 
-function getEpochForTimestamp(ts: number): number {
-  for (const epoch of EPOCHS) {
+function getEpochForTimestamp(ts: number, epochs: EpochConfig[]): number {
+  for (const epoch of epochs) {
     if (ts >= epoch.start && ts <= epoch.end) return epoch.number;
   }
-  return EPOCHS[EPOCHS.length - 1].number;
+  return epochs[epochs.length - 1].number;
 }
+
+export type MentorBallotOptions = {
+  epochVotingPower?: Record<number, number>;
+  activeGranteeNames?: Set<string>;
+};
 
 export function buildMentorBallotData(
   ballots: SubgraphBallot[],
   nameMap: AddressNameMap,
-  mentorVoters: MentorVoterData[],
-  activeGranteeNames: Set<string>,
+  councilVoters: CouncilVoterData[],
+  mentorAddresses: string[],
+  profileNames: ProfileNameMap,
+  epochs: EpochConfig[],
+  options: MentorBallotOptions = {},
 ): MentorData[] {
+  const { epochVotingPower, activeGranteeNames } = options;
+
   const liveVotingPower = new Map<string, number>();
-  for (const v of mentorVoters) {
+  for (const v of councilVoters) {
     liveVotingPower.set(v.account.toLowerCase(), Number(v.votingPower));
   }
+
+  const mentorSet = new Set(mentorAddresses.map((a) => a.toLowerCase()));
 
   const mentorBallots = new Map<string, SubgraphBallot[]>();
   for (const ballot of ballots) {
     if (ballot.votes.length === 0) continue;
     const addr = ballot.votes[0].votedBy.toLowerCase();
-    if (!MENTOR_VOTERS.has(addr)) continue;
+    if (!mentorSet.has(addr)) continue;
     let list = mentorBallots.get(addr);
     if (!list) {
       list = [];
@@ -631,17 +644,23 @@ export function buildMentorBallotData(
     list.push(ballot);
   }
 
+  const activeEpoch = getEpochForTimestamp(
+    Math.floor(Date.now() / 1000),
+    epochs,
+  );
+
   const mentors: MentorData[] = [];
 
-  for (const addr of Object.keys(MENTOR_NAMES)) {
+  for (const addr of mentorSet) {
     const raw = mentorBallots.get(addr) ?? [];
     const sorted = [...raw].sort(
       (a, b) => Number(b.createdAtTimestamp) - Number(a.createdAtTimestamp),
     );
+    const live = liveVotingPower.get(addr);
 
     const processedBallots: MentorBallot[] = sorted.map((ballot) => {
       const ts = Number(ballot.createdAtTimestamp);
-      const epoch = getEpochForTimestamp(ts);
+      const epoch = getEpochForTimestamp(ts, epochs);
       const votes: MentorBallotVote[] = ballot.votes
         .filter((v) => BigInt(v.amount) > 0n)
         .map((v) => ({
@@ -653,29 +672,23 @@ export function buildMentorBallotData(
         .sort((a, b) => b.amount - a.amount);
 
       const votesUsed = votes.reduce((sum, v) => sum + v.amount, 0);
-      const votingPower =
-        MENTOR_EPOCH_VOTING_POWER[epoch] ??
-        liveVotingPower.get(addr) ??
-        votesUsed;
+      const votingPower = epochVotingPower?.[epoch] ?? live ?? votesUsed;
 
       return { timestamp: ts, epoch, votes, votesUsed, votingPower };
     });
 
     const latestBallot = processedBallots[0];
-    const activeEpoch = getEpochForTimestamp(Math.floor(Date.now() / 1000));
     const currentPower =
-      MENTOR_EPOCH_VOTING_POWER[activeEpoch] ??
-      liveVotingPower.get(addr) ??
-      latestBallot?.votingPower ??
-      0;
+      epochVotingPower?.[activeEpoch] ?? live ?? latestBallot?.votingPower ?? 0;
 
-    const currentVotes = (latestBallot?.votes ?? []).filter((v) =>
-      activeGranteeNames.has(v.projectName),
-    );
+    const latestVotes = latestBallot?.votes ?? [];
+    const currentVotes = activeGranteeNames
+      ? latestVotes.filter((v) => activeGranteeNames.has(v.projectName))
+      : latestVotes;
 
     mentors.push({
       address: addr,
-      name: MENTOR_NAMES[addr],
+      name: profileNames[addr] ?? shortenAddress(addr),
       currentVotingPower: currentPower,
       currentVotesUsed: currentVotes.reduce((sum, v) => sum + v.amount, 0),
       currentVotes,

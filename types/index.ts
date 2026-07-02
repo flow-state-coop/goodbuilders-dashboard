@@ -1,9 +1,17 @@
 import { VoterType } from "@/lib/constants";
 
-export type MentorVoterData = {
+export type CouncilVoterData = {
   account: string;
   votingPower: string;
 };
+
+export type VoterGroup = {
+  name: string;
+  eligibilityMethod: string;
+  members: string[];
+};
+
+export type ProfileNameMap = Record<string, string>;
 
 export type SubgraphRecipient = {
   account: string;
@@ -79,9 +87,7 @@ export type TimeSeriesPoint = {
 export type ProjectEpochData = {
   epoch: number;
   votes: bigint;
-  mentorPct: number;
-  communityPct: number;
-  metricsPct: number;
+  groupPct: Record<string, number>;
   uniqueVoters: number;
   fundingAccrued: number;
   cumulativeFunding: number;

@@ -8,7 +8,8 @@ import {
   useState,
   useTransition,
 } from "react";
-import { Container, Spinner, Stack, Tab, Tabs } from "react-bootstrap";
+import { useRouter } from "next/navigation";
+import { Container, Form, Spinner, Stack, Tab, Tabs } from "react-bootstrap";
 import {
   SubgraphBallot,
   FlowUpdatedEvent,
@@ -16,9 +17,13 @@ import {
   ApplicationData,
   VotingEventRow,
   ProjectEpochData,
-  MentorVoterData,
+  CouncilVoterData,
+  VoterGroup,
+  ProfileNameMap,
   SubgraphRecipient,
 } from "@/types";
+import { buildVoterGroupMap, buildGroupColorMap } from "@/lib/constants";
+import { SeasonConfig } from "@/lib/seasons";
 import {
   buildAddressNameMap,
   processVotingEvents,
@@ -48,24 +53,66 @@ function TabLoading() {
 }
 
 export default function DashboardClient({
+  season,
+  seasons,
   ballots,
   flowEvents,
   pool,
   applications,
-  mentorVoters,
+  councilVoters,
+  voterGroups,
+  profileNames,
   recipients,
 }: {
+  season: SeasonConfig;
+  seasons: { id: string; label: string }[];
   ballots: SubgraphBallot[];
   flowEvents: FlowUpdatedEvent[];
   pool: PoolData;
   applications: ApplicationData[];
-  mentorVoters: MentorVoterData[];
+  councilVoters: CouncilVoterData[];
+  voterGroups: VoterGroup[];
+  profileNames: ProfileNameMap;
   recipients: SubgraphRecipient[];
 }) {
+  const router = useRouter();
+
   const nameMap = useMemo(
     () => buildAddressNameMap(applications),
     [applications],
   );
+
+  const voterGroupMap = useMemo(
+    () => buildVoterGroupMap(voterGroups),
+    [voterGroups],
+  );
+
+  const voterGroupLabels = useMemo(
+    () => voterGroups.map((g) => g.name),
+    [voterGroups],
+  );
+
+  const groupColorMap = useMemo(
+    () => buildGroupColorMap(voterGroupLabels),
+    [voterGroupLabels],
+  );
+
+  const mentorAddresses = useMemo(() => {
+    const group = voterGroups.find((g) => g.name === season.mentorGroupName);
+    return (group?.members ?? []).map((m) => m.toLowerCase());
+  }, [voterGroups, season.mentorGroupName]);
+
+  const recipientRemovalMap: RecipientRemovalMap = useMemo(() => {
+    const map = new Map<string, number | null>();
+    if (!season.trackRemovals) return map;
+    for (const r of recipients) {
+      map.set(
+        r.account.toLowerCase(),
+        r.removed && r.removedAtTimestamp ? Number(r.removedAtTimestamp) : null,
+      );
+    }
+    return map;
+  }, [recipients, season.trackRemovals]);
 
   const currentGranteeRates = useMemo(() => {
     const rates = new Map<string, number>();
@@ -90,31 +137,16 @@ export default function DashboardClient({
     return rates;
   }, [pool, nameMap]);
 
-  const recipientRemovalMap: RecipientRemovalMap = useMemo(() => {
-    const map = new Map<string, number | null>();
-    for (const r of recipients) {
-      map.set(
-        r.account.toLowerCase(),
-        r.removed && r.removedAtTimestamp ? Number(r.removedAtTimestamp) : null,
-      );
-    }
-    return map;
-  }, [recipients]);
-
   const { activeGranteeNames, granteeStatuses } = useMemo(() => {
     const active = new Set<string>();
     const statuses = new Map<string, string>();
     for (const app of applications) {
-      const addr = app.funding_address.toLowerCase();
-      const removalTs = recipientRemovalMap.get(addr);
-      if (removalTs != null) {
-        if (app.project_name) statuses.set(app.project_name, app.status);
-      } else if (app.project_name) {
-        active.add(app.project_name);
-      }
+      if (!app.project_name) continue;
+      if (app.status === "ACCEPTED") active.add(app.project_name);
+      else statuses.set(app.project_name, app.status);
     }
     return { activeGranteeNames: active, granteeStatuses: statuses };
-  }, [applications, recipientRemovalMap]);
+  }, [applications]);
 
   const granteeNames = useMemo(() => {
     const namesWithVotes = new Set<string>();
@@ -130,8 +162,9 @@ export default function DashboardClient({
   }, [ballots, nameMap]);
 
   const votingEvents = useMemo(
-    () => processVotingEvents(ballots, nameMap, recipientRemovalMap),
-    [ballots, nameMap, recipientRemovalMap],
+    () =>
+      processVotingEvents(ballots, nameMap, voterGroupMap, recipientRemovalMap),
+    [ballots, nameMap, voterGroupMap, recipientRemovalMap],
   );
 
   const fundingPeriods = useMemo(
@@ -155,13 +188,15 @@ export default function DashboardClient({
         ballots,
         flowEvents,
         granteeNames,
-        recipientRemovalMap,
         nameMap,
+        recipientRemovalMap,
       );
       const allEpochData = buildProjectEpochData(
         ballots,
         flowEvents,
         nameMap,
+        voterGroupMap,
+        season.epochs,
         recipientRemovalMap,
       );
       const granteeSet = new Set(granteeNames);
@@ -172,8 +207,15 @@ export default function DashboardClient({
       const mentors = buildMentorBallotData(
         ballots,
         nameMap,
-        mentorVoters,
-        activeGranteeNames,
+        councilVoters,
+        mentorAddresses,
+        profileNames,
+        season.epochs,
+        {
+          epochVotingPower: season.epochVotingPower,
+          activeGranteeNames:
+            season.mode === "legacy" ? activeGranteeNames : undefined,
+        },
       );
       if (cancelled) return;
       startDerivedTransition(() => {
@@ -198,10 +240,14 @@ export default function DashboardClient({
     ballots,
     flowEvents,
     granteeNames,
-    recipientRemovalMap,
     nameMap,
-    mentorVoters,
+    voterGroupMap,
+    recipientRemovalMap,
+    councilVoters,
+    mentorAddresses,
+    profileNames,
     activeGranteeNames,
+    season,
   ]);
 
   const [filteredVotingRows, setFilteredVotingRows] =
@@ -215,7 +261,7 @@ export default function DashboardClient({
 
   return (
     <Container fluid className="py-4 px-3 px-md-5">
-      <div className="d-flex align-items-center gap-3 mb-4">
+      <div className="d-flex align-items-center gap-3 mb-4 flex-wrap">
         <img
           src="/logo.png"
           alt="Flow State"
@@ -225,12 +271,26 @@ export default function DashboardClient({
         />
         <div>
           <h1 className="mb-0" style={{ fontWeight: 700, color: "#056589" }}>
-            GoodBuilders Season 3
+            GoodBuilders {season.label}
           </h1>
           <p className="mb-0" style={{ color: "#6c757d", fontWeight: 300 }}>
             Flow Council Stats Dashboard
           </p>
         </div>
+        <Form.Select
+          size="sm"
+          value={season.id}
+          onChange={(e) => router.push(`/${e.target.value}`)}
+          className="ms-auto"
+          style={{ maxWidth: 160 }}
+          aria-label="Select season"
+        >
+          {seasons.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
+            </option>
+          ))}
+        </Form.Select>
       </div>
 
       <Tabs defaultActiveKey="voting" className="mb-4" mountOnEnter>
@@ -239,10 +299,14 @@ export default function DashboardClient({
             <VotingStats
               rows={deferredFilteredRows}
               activeGranteeNames={activeGranteeNames}
+              groupColorMap={groupColorMap}
             />
             <VotingEventsTable
               rows={votingEvents}
               granteeNames={granteeNames}
+              voterGroupLabels={voterGroupLabels}
+              groupColorMap={groupColorMap}
+              profileNames={profileNames}
               onFilteredRowsChange={handleFilteredRowsChange}
             />
           </Stack>
@@ -293,6 +357,9 @@ export default function DashboardClient({
             <ProjectTables
               data={projectEpochData}
               granteeStatuses={granteeStatuses}
+              epochs={season.epochs}
+              voterGroupLabels={voterGroupLabels}
+              groupColorMap={groupColorMap}
             />
           ) : (
             <TabLoading />

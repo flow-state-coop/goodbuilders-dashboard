@@ -43,9 +43,9 @@ export const FLOW_UPDATED_EVENTS_QUERY = gql`
   }
 `;
 
-export const MENTOR_VOTERS_QUERY = gql`
-  query MentorVoters($councilId: String!, $accounts: [String!]!) {
-    voters(where: { flowCouncil: $councilId, account_in: $accounts }) {
+export const COUNCIL_VOTERS_QUERY = gql`
+  query CouncilVoters($councilId: String!) {
+    voters(where: { flowCouncil: $councilId }, first: 1000) {
       account
       votingPower
     }
