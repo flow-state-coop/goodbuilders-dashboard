@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useState,
-  useTransition,
-} from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Container, Form, Spinner, Stack, Tab, Tabs } from "react-bootstrap";
 import {
@@ -15,33 +8,24 @@ import {
   FlowUpdatedEvent,
   PoolData,
   ApplicationData,
-  VotingEventRow,
   ProjectEpochData,
-  CouncilVoterData,
   VoterGroup,
-  ProfileNameMap,
   SubgraphRecipient,
 } from "@/types";
 import { buildVoterGroupMap, buildGroupColorMap } from "@/lib/constants";
 import { SeasonConfig } from "@/lib/seasons";
 import {
   buildAddressNameMap,
-  processVotingEvents,
   processStreamPeriods,
   buildTimeSeries,
   buildProjectEpochData,
-  buildMentorBallotData,
-  MentorData,
   RecipientRemovalMap,
   TimeSeries,
 } from "@/lib/dataProcessing";
 import { weiPerSecToPerMonth } from "@/lib/utils";
-import VotingEventsTable from "./VotingEventsTable";
-import VotingStats from "./VotingStats";
 import FundingEventsTable from "./FundingEventsTable";
 import HistoricalCharts from "./HistoricalCharts";
 import ProjectTables from "./ProjectTables";
-import MentorBreakdown from "./MentorBreakdown";
 import GranteeFundingSummary from "./GranteeFundingSummary";
 
 function TabLoading() {
@@ -59,9 +43,7 @@ export default function DashboardClient({
   flowEvents,
   pool,
   applications,
-  councilVoters,
   voterGroups,
-  profileNames,
   recipients,
 }: {
   season: SeasonConfig;
@@ -70,9 +52,7 @@ export default function DashboardClient({
   flowEvents: FlowUpdatedEvent[];
   pool: PoolData;
   applications: ApplicationData[];
-  councilVoters: CouncilVoterData[];
   voterGroups: VoterGroup[];
-  profileNames: ProfileNameMap;
   recipients: SubgraphRecipient[];
 }) {
   const router = useRouter();
@@ -96,11 +76,6 @@ export default function DashboardClient({
     () => buildGroupColorMap(voterGroupLabels),
     [voterGroupLabels],
   );
-
-  const mentorAddresses = useMemo(() => {
-    const group = voterGroups.find((g) => g.name === season.mentorGroupName);
-    return (group?.members ?? []).map((m) => m.toLowerCase());
-  }, [voterGroups, season.mentorGroupName]);
 
   const recipientRemovalMap: RecipientRemovalMap = useMemo(() => {
     const map = new Map<string, number | null>();
@@ -137,15 +112,13 @@ export default function DashboardClient({
     return rates;
   }, [pool, nameMap]);
 
-  const { activeGranteeNames, granteeStatuses } = useMemo(() => {
-    const active = new Set<string>();
+  const granteeStatuses = useMemo(() => {
     const statuses = new Map<string, string>();
     for (const app of applications) {
-      if (!app.project_name) continue;
-      if (app.status === "ACCEPTED") active.add(app.project_name);
-      else statuses.set(app.project_name, app.status);
+      if (app.project_name && app.status !== "ACCEPTED")
+        statuses.set(app.project_name, app.status);
     }
-    return { activeGranteeNames: active, granteeStatuses: statuses };
+    return statuses;
   }, [applications]);
 
   const granteeNames = useMemo(() => {
@@ -161,12 +134,6 @@ export default function DashboardClient({
     return [...namesWithVotes].sort();
   }, [ballots, nameMap]);
 
-  const votingEvents = useMemo(
-    () =>
-      processVotingEvents(ballots, nameMap, voterGroupMap, recipientRemovalMap),
-    [ballots, nameMap, voterGroupMap, recipientRemovalMap],
-  );
-
   const fundingPeriods = useMemo(
     () => processStreamPeriods(flowEvents),
     [flowEvents],
@@ -177,7 +144,6 @@ export default function DashboardClient({
     string,
     ProjectEpochData[]
   > | null>(null);
-  const [mentorData, setMentorData] = useState<MentorData[] | null>(null);
   const [, startDerivedTransition] = useTransition();
 
   useEffect(() => {
@@ -204,24 +170,10 @@ export default function DashboardClient({
       for (const [name, epochs] of allEpochData) {
         if (granteeSet.has(name)) filteredEpochData.set(name, epochs);
       }
-      const mentors = buildMentorBallotData(
-        ballots,
-        nameMap,
-        councilVoters,
-        mentorAddresses,
-        profileNames,
-        season.epochs,
-        {
-          epochVotingPower: season.epochVotingPower,
-          activeGranteeNames:
-            season.mode === "legacy" ? activeGranteeNames : undefined,
-        },
-      );
       if (cancelled) return;
       startDerivedTransition(() => {
         setTimeSeries(ts);
         setProjectEpochData(filteredEpochData);
-        setMentorData(mentors);
       });
     };
     let idleHandle: number | null = null;
@@ -243,21 +195,8 @@ export default function DashboardClient({
     nameMap,
     voterGroupMap,
     recipientRemovalMap,
-    councilVoters,
-    mentorAddresses,
-    profileNames,
-    activeGranteeNames,
     season,
   ]);
-
-  const [filteredVotingRows, setFilteredVotingRows] =
-    useState<VotingEventRow[]>(votingEvents);
-
-  const handleFilteredRowsChange = useCallback((rows: VotingEventRow[]) => {
-    setFilteredVotingRows(rows);
-  }, []);
-
-  const deferredFilteredRows = useDeferredValue(filteredVotingRows);
 
   return (
     <Container fluid className="py-4 px-3 px-md-5">
@@ -293,25 +232,7 @@ export default function DashboardClient({
         </Form.Select>
       </div>
 
-      <Tabs defaultActiveKey="voting" className="mb-4" mountOnEnter>
-        <Tab eventKey="voting" title="Voting">
-          <Stack gap={4}>
-            <VotingStats
-              rows={deferredFilteredRows}
-              activeGranteeNames={activeGranteeNames}
-              groupColorMap={groupColorMap}
-            />
-            <VotingEventsTable
-              rows={votingEvents}
-              granteeNames={granteeNames}
-              voterGroupLabels={voterGroupLabels}
-              groupColorMap={groupColorMap}
-              profileNames={profileNames}
-              onFilteredRowsChange={handleFilteredRowsChange}
-            />
-          </Stack>
-        </Tab>
-
+      <Tabs defaultActiveKey="funding" className="mb-4" mountOnEnter>
         <Tab eventKey="funding" title="Funding">
           {timeSeries ? (
             <Stack gap={4}>
@@ -323,14 +244,6 @@ export default function DashboardClient({
               />
               <FundingEventsTable rows={fundingPeriods} />
             </Stack>
-          ) : (
-            <TabLoading />
-          )}
-        </Tab>
-
-        <Tab eventKey="mentors" title="Mentors">
-          {mentorData ? (
-            <MentorBreakdown mentors={mentorData} />
           ) : (
             <TabLoading />
           )}

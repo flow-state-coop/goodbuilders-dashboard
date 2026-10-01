@@ -7,7 +7,6 @@ import {
   ALL_BALLOTS_QUERY,
   FLOW_UPDATED_EVENTS_QUERY,
   DISTRIBUTION_POOL_QUERY,
-  COUNCIL_VOTERS_QUERY,
   RECIPIENTS_QUERY,
 } from "@/lib/queries";
 import {
@@ -15,9 +14,7 @@ import {
   FlowUpdatedEvent,
   PoolData,
   ApplicationData,
-  CouncilVoterData,
   VoterGroup,
-  ProfileNameMap,
   SubgraphRecipient,
 } from "@/types";
 import DashboardClient from "@/components/DashboardClient";
@@ -71,17 +68,6 @@ async function fetchPool(poolId: string): Promise<PoolData> {
   return data.pool;
 }
 
-async function fetchCouncilVoters(
-  council: string,
-): Promise<CouncilVoterData[]> {
-  const data = await request<{ voters: CouncilVoterData[] }>(
-    FLOW_COUNCIL_SUBGRAPH,
-    COUNCIL_VOTERS_QUERY,
-    { councilId: council },
-  );
-  return data.voters;
-}
-
 async function fetchRecipients(council: string): Promise<SubgraphRecipient[]> {
   const data = await request<{ recipients: SubgraphRecipient[] }>(
     FLOW_COUNCIL_SUBGRAPH,
@@ -115,30 +101,6 @@ async function fetchVoterGroups(season: SeasonConfig): Promise<VoterGroup[]> {
   return Array.isArray(json.groups) ? json.groups : [];
 }
 
-async function fetchProfileNames(addresses: string[]): Promise<ProfileNameMap> {
-  const normalized: ProfileNameMap = {};
-  const batchSize = 500;
-
-  for (let i = 0; i < addresses.length; i += batchSize) {
-    const batch = addresses.slice(i, i + batchSize);
-    const res = await fetch(`${PLATFORM_API}/voter-groups/profiles`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ addresses: batch }),
-      next: { revalidate: 300 },
-    });
-
-    const json = await res.json();
-    if (!json.success || !json.names) continue;
-
-    for (const [addr, name] of Object.entries(json.names)) {
-      normalized[addr.toLowerCase()] = name as string;
-    }
-  }
-
-  return normalized;
-}
-
 export const revalidate = 60;
 
 export function generateStaticParams() {
@@ -168,33 +130,18 @@ export default async function SeasonPage({
   const season = getSeason(seasonId);
   if (!season) notFound();
 
-  const [ballots, flowEvents, pool, applications, councilVoters, voterGroups] =
+  const [ballots, flowEvents, pool, applications, voterGroups] =
     await Promise.all([
       fetchAllBallots(season.council),
       fetchFlowEvents(season.superApp),
       fetchPool(season.distributionPool),
       fetchApplications(season),
-      fetchCouncilVoters(season.council),
       fetchVoterGroups(season),
     ]);
 
   const recipients = season.trackRemovals
     ? await fetchRecipients(season.council)
     : [];
-
-  let profileNames: ProfileNameMap = season.staticProfileNames ?? {};
-  if (season.fetchProfiles) {
-    const voterAddresses = new Set<string>();
-    for (const v of councilVoters) voterAddresses.add(v.account.toLowerCase());
-    for (const g of voterGroups) {
-      for (const m of g.members) voterAddresses.add(m.toLowerCase());
-    }
-    for (const b of ballots) {
-      if (b.votes.length > 0)
-        voterAddresses.add(b.votes[0].votedBy.toLowerCase());
-    }
-    profileNames = await fetchProfileNames([...voterAddresses]);
-  }
 
   return (
     <DashboardClient
@@ -204,9 +151,7 @@ export default async function SeasonPage({
       flowEvents={flowEvents}
       pool={pool}
       applications={applications}
-      councilVoters={councilVoters}
       voterGroups={voterGroups}
-      profileNames={profileNames}
       recipients={recipients}
     />
   );

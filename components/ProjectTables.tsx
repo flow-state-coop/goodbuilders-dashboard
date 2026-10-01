@@ -55,7 +55,19 @@ export default function ProjectTables({
     epochDurations.set(e.number, end - start);
   }
 
-  const entries = [...data.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const REMOVED_PROJECT_PREFIXES = ["bitsave", "drip"];
+  const removedRank = (name: string) => {
+    const lower = name.trim().toLowerCase();
+    return REMOVED_PROJECT_PREFIXES.findIndex((p) => lower.startsWith(p));
+  };
+  const entries = [...data.entries()].sort(([a], [b]) => {
+    const ra = removedRank(a);
+    const rb = removedRank(b);
+    if (ra !== -1 && rb !== -1) return ra - rb;
+    if (ra !== -1) return 1;
+    if (rb !== -1) return -1;
+    return a.localeCompare(b);
+  });
 
   return (
     <Row xs={1} lg={2} className="g-4">

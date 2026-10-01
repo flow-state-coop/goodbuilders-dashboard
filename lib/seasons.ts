@@ -18,26 +18,24 @@ export type SeasonConfig = {
   defaultGroupLabel: string;
   trackRemovals: boolean;
   fetchPlatformGroups: boolean;
-  fetchProfiles: boolean;
   staticGroups?: VoterGroup[];
-  staticProfileNames?: Record<string, string>;
   epochVotingPower?: Record<number, number>;
 };
 
-const S3_MENTOR_NAMES: Record<string, string> = {
-  "0x9f6c0ac954829a863e8d09a46a7a167d5763975c": "Solène Daviaud",
-  "0x5a9f2ca69f82621c841efefabd1f244273cd0245": "Kaspar Kallas",
-  "0x0994e0206e3fa5dea037a6bfbcf168b94bf74bc3": "Rael",
-  "0xf62daae4c3f9fadf689f767716a82dfee5026c89": "Philipp Teles",
-  "0x6e7679d53c43a8a9e2cf87fca99a1db9b379fe29": "Cotabe",
-  "0x6eeb37b9757dca963120f61c7e0e0160469a44d3": "Meri Fernandez",
-  "0x884ff907d5fb8bae239b64aa8ad18ba3f8196038": "Graven",
-  "0x31cd90c2788f3e390d2bb72871f5ad3f1a4b22a1": "LuukDAO",
-  "0xa48840d89a761502a4a7d995c74f3864d651a87f": "Hadar Rottenberg",
-  "0x3b7275c428c9b46d2c244e066c0bbadb9b9a8b9f": "Laurence",
-  "0xf3d4ef9c67bbdb40e7a16975a8a8a4d8e41df8d9": "Sam McCarthy",
-  "0xa50064d462e17f7091ee62baebeb18bfebe21507": "Drew Simon",
-};
+const S3_MENTORS = [
+  "0x9f6c0ac954829a863e8d09a46a7a167d5763975c",
+  "0x5a9f2ca69f82621c841efefabd1f244273cd0245",
+  "0x0994e0206e3fa5dea037a6bfbcf168b94bf74bc3",
+  "0xf62daae4c3f9fadf689f767716a82dfee5026c89",
+  "0x6e7679d53c43a8a9e2cf87fca99a1db9b379fe29",
+  "0x6eeb37b9757dca963120f61c7e0e0160469a44d3",
+  "0x884ff907d5fb8bae239b64aa8ad18ba3f8196038",
+  "0x31cd90c2788f3e390d2bb72871f5ad3f1a4b22a1",
+  "0xa48840d89a761502a4a7d995c74f3864d651a87f",
+  "0x3b7275c428c9b46d2c244e066c0bbadb9b9a8b9f",
+  "0xf3d4ef9c67bbdb40e7a16975a8a8a4d8e41df8d9",
+  "0xa50064d462e17f7091ee62baebeb18bfebe21507",
+];
 
 const S3_METRICS_VOTER = "0x7f0a04f131b8395e4e0bcf4c77e47845c952f49d";
 
@@ -45,7 +43,7 @@ const S3_STATIC_GROUPS: VoterGroup[] = [
   {
     name: "Mentors",
     eligibilityMethod: "manual",
-    members: Object.keys(S3_MENTOR_NAMES),
+    members: S3_MENTORS,
   },
   { name: "Community", eligibilityMethod: "gooddollar", members: [] },
   {
@@ -76,9 +74,7 @@ const SEASON_3: SeasonConfig = {
   defaultGroupLabel: "Community",
   trackRemovals: true,
   fetchPlatformGroups: false,
-  fetchProfiles: false,
   staticGroups: S3_STATIC_GROUPS,
-  staticProfileNames: S3_MENTOR_NAMES,
   epochVotingPower: { 1: 100, 2: 2596, 3: 3418, 4: 6785, 5: 7738, 6: 9294 },
 };
 
@@ -103,7 +99,6 @@ const SEASON_4: SeasonConfig = {
   defaultGroupLabel: "Community",
   trackRemovals: false,
   fetchPlatformGroups: true,
-  fetchProfiles: true,
 };
 
 export const SEASONS: SeasonConfig[] = [SEASON_4, SEASON_3];
